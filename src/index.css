@@ -1,1 +1,28 @@
 @import "tailwindcss";
+
+@theme {
+  /* Superficies */
+  --color-canvas: #0A0A0A;
+  --color-surface: #111110;
+  --color-surface-2: #1B1A18;
+  --color-surface-inset: #050504;
+
+  /* Tinta */
+  --color-ink: #F2F0EA;
+  --color-ink-dim: #8C8880;
+  --color-ink-faint: #47443F;
+
+  /* Acento — uso restringido (racha/aciertos) */
+  --color-accent: #C9FF3B;
+
+  /* Sombras offset brutalistas */
+  --shadow-brutal-sm: 4px 4px 0px 0px var(--color-ink);
+  --shadow-brutal-md: 8px 8px 0px 0px var(--color-ink);
+  --shadow-brutal-lg: 14px 14px 0px 0px var(--color-ink);
+
+  /* Tracking */
+  --tracking-tighter: -0.04em;
+  --tracking-wide: 0.06em;
+  --tracking-widest: 0.14em;
+  --tracking-mega: 0.3em;
+}
