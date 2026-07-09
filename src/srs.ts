@@ -14,6 +14,8 @@ export interface SrsCardState {
   /** Round counter. Used only for box 0, so a missed word resurfaces within the same session. */
   dueRound: number;
   lastSeen: number;
+  /** Epoch ms of the first time this word was answered. Preserves the user's practice order. */
+  firstSeenAt: number;
   totalSeen: number;
   totalCorrect: number;
   totalIncorrect: number;
@@ -45,12 +47,24 @@ export function emptySrsState(): SrsState {
   return { version: 1, round: 0, cards: {} };
 }
 
+/** Fills in `firstSeenAt` for cards persisted before that field existed, using key insertion order as the best available approximation of practice order. */
+function backfillFirstSeenAt(state: SrsState): SrsState {
+  const entries = Object.entries(state.cards);
+  if (entries.every(([, card]) => card.firstSeenAt != null)) return state;
+  const now = Date.now();
+  const cards: Record<string, SrsCardState> = {};
+  entries.forEach(([word, card], index) => {
+    cards[word] = card.firstSeenAt != null ? card : { ...card, firstSeenAt: now + index };
+  });
+  return { ...state, cards };
+}
+
 export function loadSrsState(): SrsState {
   try {
     const raw = localStorage.getItem(SRS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.version === 1 && parsed.cards) return parsed as SrsState;
+      if (parsed && parsed.version === 1 && parsed.cards) return backfillFirstSeenAt(parsed as SrsState);
     }
   } catch (e) {
     console.error(e);
@@ -63,10 +77,12 @@ export function loadSrsState(): SrsState {
       const parsed: Record<string, 'correct' | 'incorrect'> = JSON.parse(legacy);
       const now = Date.now();
       const cards: Record<string, SrsCardState> = {};
-      Object.entries(parsed).forEach(([word, result]) => {
+      Object.entries(parsed).forEach(([word, result], index) => {
+        // No order info in the legacy model; approximate it with insertion order.
+        const firstSeenAt = now + index;
         cards[word] = result === 'correct'
-          ? { box: 2, dueAt: now + BOX_INTERVAL_MS[2], dueRound: 0, lastSeen: now, totalSeen: 1, totalCorrect: 1, totalIncorrect: 0 }
-          : { box: 0, dueAt: now, dueRound: 3, lastSeen: now, totalSeen: 1, totalCorrect: 0, totalIncorrect: 1 };
+          ? { box: 2, dueAt: now + BOX_INTERVAL_MS[2], dueRound: 0, lastSeen: now, firstSeenAt, totalSeen: 1, totalCorrect: 1, totalIncorrect: 0 }
+          : { box: 0, dueAt: now, dueRound: 3, lastSeen: now, firstSeenAt, totalSeen: 1, totalCorrect: 0, totalIncorrect: 1 };
       });
       const migrated: SrsState = { version: 1, round: 0, cards };
       persistSrsState(migrated);
@@ -98,6 +114,7 @@ export function recordAnswer(state: SrsState, word: string, correct: boolean): S
       dueAt: now + interval,
       dueRound: round,
       lastSeen: now,
+      firstSeenAt: prev?.firstSeenAt ?? now,
       totalSeen: (prev?.totalSeen ?? 0) + 1,
       totalCorrect: (prev?.totalCorrect ?? 0) + 1,
       totalIncorrect: prev?.totalIncorrect ?? 0,
@@ -109,6 +126,7 @@ export function recordAnswer(state: SrsState, word: string, correct: boolean): S
       dueAt: now,
       dueRound: round + delay,
       lastSeen: now,
+      firstSeenAt: prev?.firstSeenAt ?? now,
       totalSeen: (prev?.totalSeen ?? 0) + 1,
       totalCorrect: prev?.totalCorrect ?? 0,
       totalIncorrect: (prev?.totalIncorrect ?? 0) + 1,
