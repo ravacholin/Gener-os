@@ -24,7 +24,7 @@ import { nounsData, Noun } from './nouns';
 import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, isDue, SRS_STORAGE_KEY } from './srs';
 
 type Difficulty = 'fácil' | 'medio' | 'difícil';
-type LibraryFilter = 'todos' | Difficulty | 'unseen' | 'aprendiendo' | 'dominado';
+type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado';
 
 // --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
 
@@ -297,9 +297,17 @@ export default function App() {
   }, [currentFilteredNouns, srsState]);
 
   // --- LIBRARY FILTERING ---
+  // The dictionary only ever shows nouns the user has actually practiced, ordered
+  // by the moment each one was first answered (oldest first).
+  const practicedLibraryNouns = useMemo(() => {
+    return nounsData
+      .filter(noun => !!srsState.cards[noun.word])
+      .sort((a, b) => srsState.cards[a.word].firstSeenAt - srsState.cards[b.word].firstSeenAt);
+  }, [srsState]);
+
   const filteredLibraryNouns = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return nounsData.filter(noun => {
+    return practicedLibraryNouns.filter(noun => {
       const matchesSearch = noun.word.toLowerCase().includes(q) || noun.rule.toLowerCase().includes(q);
 
       if (libraryFilter === 'todos') return matchesSearch;
@@ -307,12 +315,11 @@ export default function App() {
         return noun.difficulty === libraryFilter && matchesSearch;
       }
       const card = srsState.cards[noun.word];
-      if (libraryFilter === 'unseen') return !card && matchesSearch;
       if (libraryFilter === 'aprendiendo') return !!card && card.box <= 2 && matchesSearch;
       if (libraryFilter === 'dominado') return !!card && card.box >= 3 && matchesSearch;
       return matchesSearch;
     });
-  }, [searchQuery, libraryFilter, srsState]);
+  }, [searchQuery, libraryFilter, practicedLibraryNouns, srsState]);
 
   // Calculate current card visual transform
   const cardStyle = useMemo(() => {
@@ -643,7 +650,7 @@ export default function App() {
                 <BookOpen className="w-6 h-6 text-ink" />
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tight">Diccionario de Sustantivos</h3>
-                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">Base de datos de {nounsData.length} palabras de práctica</p>
+                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{practicedLibraryNouns.length} palabras que ya practicaste, en el orden en que las respondiste</p>
                 </div>
               </div>
 
@@ -685,7 +692,6 @@ export default function App() {
                   { id: 'fácil', label: 'Fácil' },
                   { id: 'medio', label: 'Medio' },
                   { id: 'difícil', label: 'Difícil' },
-                  { id: 'unseen', label: 'Sin ver' },
                   { id: 'aprendiendo', label: 'Aprendiendo' },
                   { id: 'dominado', label: 'Dominado' },
                 ].map(filterBtn => (
@@ -705,8 +711,17 @@ export default function App() {
               {filteredLibraryNouns.length === 0 ? (
                 <div className="text-center py-12 text-ink/40">
                   <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-ink" />
-                  <p className="text-sm font-mono">No se encontraron sustantivos.</p>
-                  <p className="text-xs">Prueba cambiando tu búsqueda o tus filtros.</p>
+                  {practicedLibraryNouns.length === 0 ? (
+                    <>
+                      <p className="text-sm font-mono">Todavía no practicaste ningún sustantivo.</p>
+                      <p className="text-xs">Los que vayas respondiendo van a ir apareciendo acá.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-mono">No se encontraron sustantivos.</p>
+                      <p className="text-xs">Prueba cambiando tu búsqueda o tus filtros.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 filteredLibraryNouns.map((noun, idx) => {
@@ -762,7 +777,7 @@ export default function App() {
 
             {/* Library Footer summary */}
             <div className="p-4 border-t-2 border-ink bg-surface flex items-center justify-between text-xs font-mono">
-              <span className="opacity-60 uppercase">Mostrando {filteredLibraryNouns.length} de {nounsData.length} palabras</span>
+              <span className="opacity-60 uppercase">Mostrando {filteredLibraryNouns.length} de {practicedLibraryNouns.length} palabras practicadas</span>
               <button
                 onClick={() => {
                   setSearchQuery('');
