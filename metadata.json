@@ -1,0 +1,6 @@
+{
+  "name": "Género de Sustantivos",
+  "description": "Una aplicación minimalista brutalista para practicar el género de los sustantivos en español con tres niveles de dificultad y explicaciones detalladas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
