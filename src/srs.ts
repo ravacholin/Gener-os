@@ -161,12 +161,18 @@ function weightedRandomPick(pool: Noun[], state: SrsState): Noun {
 }
 
 /**
- * Picks the next word to show. Prefers due/unseen cards so errors resurface soon
- * and mastered words stay spaced out; falls back to a box-weighted pick across the
- * whole pool so the game never runs out of cards even when everything is caught up.
+ * Picks the next word to show. Never repeats a word the pool still has unseen ones
+ * left to offer: as long as any card in the pool has no state at all, one of those is
+ * picked at random, so the whole pool gets exhausted once before anything repeats.
+ * Only after every word has been seen at least once does it fall back to a
+ * due/box-weighted pick, which is where repeats (SRS reviews) start happening.
  */
 export function pickNextWord(pool: Noun[], state: SrsState, avoidWord?: string): Noun {
   const candidates = pool.length > 1 ? pool.filter(n => n.word !== avoidWord) : pool;
+  const unseen = candidates.filter(n => !state.cards[n.word]);
+  if (unseen.length > 0) {
+    return unseen[Math.floor(Math.random() * unseen.length)];
+  }
   const due = candidates.filter(n => isDue(n, state));
   const source = due.length > 0 ? due : candidates;
   return weightedRandomPick(source, state);
