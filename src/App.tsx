@@ -510,18 +510,18 @@ export default function App() {
           {/* RULE LESSON BOX */}
           <div id="rule-lesson-box" className="w-full max-w-md">
             {gameState === 'answered' ? (
-              <div className="border-2 border-ink bg-surface p-4 relative animate-rise min-h-[52px] md:min-h-[88px] max-h-[72px] md:max-h-[112px] overflow-y-auto">
-                <div className="absolute -top-2.5 left-4 bg-ink text-canvas px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-widest flex items-center gap-1">
-                  <Info className="w-3 h-3" />
-                  {activeNoun.rule}
+              <div className="border-2 border-ink bg-surface p-4 relative animate-rise min-h-[64px] md:min-h-[88px] max-h-[130px] md:max-h-[112px] overflow-y-auto">
+                <div className="absolute -top-2.5 left-4 max-w-[calc(100%-2rem)] bg-ink text-canvas px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-widest flex items-center gap-1" title={activeNoun.rule}>
+                  <Info className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{activeNoun.rule}</span>
                 </div>
-                <p className="mt-2 text-xs md:text-sm text-ink/90 leading-relaxed font-mono">
+                <p className="mt-2 text-[13px] md:text-sm text-ink/90 leading-relaxed font-mono">
                   {activeNoun.explanation}{' '}
                   <span className="text-ink-dim">Ej: <span className="text-ink">{activeNoun.example}</span></span>
                 </p>
               </div>
             ) : (
-              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center min-h-[52px] md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
+              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center min-h-[64px] md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
                 Responde para ver la regla
               </div>
             )}
