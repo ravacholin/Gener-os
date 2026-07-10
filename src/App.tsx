@@ -76,6 +76,12 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // Rule box text-clamp detection: on mobile the rule box is a fixed compact
+  // height and the explanation is line-clamped, so long rules (hard cards) get
+  // an in-context "ver más" hint that opens the full text in the Diccionario.
+  const ruleTextRef = useRef<HTMLParagraphElement>(null);
+  const [isRuleClamped, setIsRuleClamped] = useState<boolean>(false);
+
   // --- LOCAL STORAGE PERSISTENCE ---
   useEffect(() => {
     const savedScore = localStorage.getItem('genero_score');
@@ -348,6 +354,17 @@ export default function App() {
     };
   }, [xOffset, isDragging, gameState, userAnswer]);
 
+  // Detect whether the (line-clamped) explanation is actually truncated so the
+  // "ver más" hint only shows when there is hidden text. Runs after layout.
+  useEffect(() => {
+    if (gameState !== 'answered') {
+      setIsRuleClamped(false);
+      return;
+    }
+    const el = ruleTextRef.current;
+    setIsRuleClamped(!!el && el.scrollHeight > el.clientHeight + 1);
+  }, [gameState, activeNoun]);
+
   return (
     <div id="app-root" className="w-full h-[100dvh] bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none">
       {/* HEADER SECTION */}
@@ -454,7 +471,7 @@ export default function App() {
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={`w-full max-w-md aspect-[4/3] max-h-full md:max-h-none bg-surface border-2 border-ink px-4 py-6 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-[box-shadow,opacity] duration-75 ${
+              className={`w-full max-w-md h-56 md:h-auto md:aspect-[4/3] min-h-0 overflow-hidden bg-surface border-2 border-ink px-4 py-4 md:px-10 md:py-6 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-[box-shadow,opacity] duration-75 ${
                 isDragging ? 'shadow-brutal-lg cursor-grabbing' : gameState === 'playing' ? 'cursor-grab' : ''
               } ${
                 gameState === 'answered'
@@ -476,15 +493,15 @@ export default function App() {
                 </h2>
 
                 {gameState === 'answered' && (
-                  <div className="mt-5 flex flex-col items-center">
-                    <span id="answer-stamp" className={`inline-block border-2 px-6 py-2 text-xl md:text-2xl font-black uppercase tracking-widest animate-stamp ${
+                  <div className="mt-3 md:mt-5 flex flex-col items-center">
+                    <span id="answer-stamp" className={`inline-block border-2 px-5 py-1.5 md:px-6 md:py-2 text-lg md:text-2xl font-black uppercase tracking-widest animate-stamp ${
                       lastAnswerWasCorrect
                         ? 'border-ink text-ink'
                         : 'border-ink-faint text-ink-faint line-through decoration-ink decoration-2'
                     }`}>
                       {lastAnswerWasCorrect ? 'Correcto' : 'Error'}
                     </span>
-                    <p className="mt-4 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
+                    <p className="mt-2.5 md:mt-4 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
                       Es <span className="text-ink font-bold">
                         {activeNoun.gender === 'masculino' ? '♂ EL · masculino' : '♀ LA · femenino'}
                       </span>
@@ -498,7 +515,7 @@ export default function App() {
                 <button
                   id="btn-next-word"
                   onClick={handleNext}
-                  className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
+                  className="absolute -bottom-4 md:-bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
                 >
                   <span>Siguiente</span>
                   <ChevronRight className="w-4 h-4" />
@@ -507,21 +524,32 @@ export default function App() {
             </div>
           </div>
 
-          {/* RULE LESSON BOX */}
-          <div id="rule-lesson-box" className="w-full max-w-md">
+          {/* RULE LESSON BOX — fixed compact height in both states so the layout
+              never reflows between playing/answered or between cards. */}
+          <div id="rule-lesson-box" className="w-full max-w-md h-28 md:h-auto shrink-0">
             {gameState === 'answered' ? (
-              <div className="border-2 border-ink bg-surface p-4 relative animate-rise min-h-[64px] md:min-h-[88px] max-h-[130px] md:max-h-[112px] overflow-y-auto">
-                <div className="absolute -top-2.5 left-4 max-w-[calc(100%-2rem)] bg-ink text-canvas px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-widest flex items-center gap-1" title={activeNoun.rule}>
-                  <Info className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{activeNoun.rule}</span>
+              <div className="border-2 border-ink bg-surface px-3.5 pt-2.5 pb-3 md:p-4 animate-rise h-28 md:h-auto md:min-h-[88px] md:max-h-[120px] flex flex-col overflow-hidden md:overflow-y-auto">
+                <div className="flex items-center justify-between gap-2 shrink-0" title={activeNoun.rule}>
+                  <span className="flex items-center gap-1 min-w-0 text-[9px] font-mono font-black uppercase tracking-widest text-ink-dim">
+                    <Info className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{activeNoun.rule}</span>
+                  </span>
+                  {isRuleClamped && (
+                    <button
+                      onClick={() => setIsLibraryOpen(true)}
+                      className="shrink-0 text-[9px] font-mono font-black uppercase tracking-widest text-ink border-b border-ink hover:text-canvas hover:bg-ink px-1"
+                    >
+                      ver más
+                    </button>
+                  )}
                 </div>
-                <p className="mt-2 text-[13px] md:text-sm text-ink/90 leading-relaxed font-mono">
+                <p ref={ruleTextRef} className="mt-1.5 text-[13px] md:text-sm text-ink/90 leading-snug md:leading-relaxed font-mono line-clamp-3 md:line-clamp-none">
                   {activeNoun.explanation}{' '}
                   <span className="text-ink-dim">Ej: <span className="text-ink">{activeNoun.example}</span></span>
                 </p>
               </div>
             ) : (
-              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center min-h-[64px] md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
+              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center h-28 md:h-auto md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
                 Responde para ver la regla
               </div>
             )}
