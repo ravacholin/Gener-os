@@ -15,9 +15,6 @@ import {
   Info,
   Check,
   AlertTriangle,
-  Zap,
-  HelpCircle,
-  Award,
   ListFilter,
 } from 'lucide-react';
 import { nounsData, Noun } from './nouns';
@@ -29,20 +26,20 @@ type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado';
 // --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
 
 function Chip({ active, onClick, children, title, id }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; id?: string }) {
-  const className = `px-2.5 py-1 text-[10px] font-bold uppercase border tracking-wide transition-all whitespace-nowrap ${
-    active ? 'bg-ink text-canvas border-ink' : 'border-ink/30 text-ink-dim'
-  } ${onClick ? 'hover:bg-surface-2 hover:border-ink/60 cursor-pointer' : ''}`;
+  const className = `px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-widest border transition-colors duration-100 whitespace-nowrap ${
+    active ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
+  } ${onClick ? 'hover:text-ink hover:border-ink-dim cursor-pointer' : ''}`;
   if (onClick) {
     return <button id={id} onClick={onClick} title={title} className={className}>{children}</button>;
   }
   return <span id={id} title={title} className={className}>{children}</span>;
 }
 
-function StatWidget({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className={`flex flex-col justify-center ${className}`}>
-      <span className="text-[10px] uppercase font-mono font-bold opacity-60 tracking-wide">{label}</span>
-      <div className="mt-1.5">{children}</div>
+    <div className="flex flex-col justify-center gap-1">
+      <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">{label}</span>
+      <div className="text-ink">{children}</div>
     </div>
   );
 }
@@ -348,34 +345,37 @@ export default function App() {
   return (
     <div id="app-root" className="w-full h-screen bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none">
       {/* HEADER SECTION */}
-      <header id="header-container" className="flex flex-wrap items-center justify-between border-b-2 border-ink p-4 md:p-6 bg-surface z-10">
-        <div className="flex items-center space-x-3 mb-2 sm:mb-0">
-          <div className="bg-ink text-canvas p-1.5 border border-ink">
-            <Zap className="w-6 h-6 fill-canvas" />
-          </div>
-          <div>
-            <h1 id="app-title" className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
-              Género
-            </h1>
-            <p className="text-[9px] font-mono tracking-widest text-ink-dim uppercase">Student Trainer</p>
-          </div>
+      <header id="header-container" className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink px-4 md:px-8 py-4 bg-canvas z-10">
+        <div className="flex items-baseline gap-3">
+          <h1 id="app-title" className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
+            Género
+          </h1>
+          <span className="hidden sm:inline text-[9px] font-mono uppercase tracking-mega text-ink-faint">/ sustantivos</span>
         </div>
 
         {/* Difficulty Selection & Controls */}
-        <div className="flex items-center space-x-4 md:space-x-6 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="flex gap-1.5">
-            {(['fácil', 'medio', 'difícil'] as const).map((diff) => (
-              <Chip key={diff} id={`btn-diff-${diff}`} active={difficulty === diff} onClick={() => handleDifficultyChange(diff)}>
+        <div className="flex items-center gap-3 md:gap-5 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Segmented difficulty control */}
+          <div className="flex border border-ink">
+            {(['fácil', 'medio', 'difícil'] as const).map((diff, i) => (
+              <button
+                key={diff}
+                id={`btn-diff-${diff}`}
+                onClick={() => handleDifficultyChange(diff)}
+                className={`px-2.5 md:px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest transition-colors duration-100 ${
+                  i > 0 ? 'border-l border-ink' : ''
+                } ${difficulty === diff ? 'bg-ink text-canvas' : 'text-ink-dim hover:text-ink'}`}
+              >
                 {diff}
-              </Chip>
+              </button>
             ))}
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex">
             <button
               id="btn-mute-toggle"
               onClick={toggleMute}
-              className="p-2 border border-ink hover:bg-ink hover:text-canvas transition-all bg-canvas text-ink"
+              className="p-2 border border-ink hover:bg-ink hover:text-canvas transition-colors duration-100"
               title={isMuted ? "Activar sonido" : "Silenciar"}
             >
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -384,7 +384,7 @@ export default function App() {
             <button
               id="btn-open-library"
               onClick={() => setIsLibraryOpen(true)}
-              className="p-2 border border-ink hover:bg-ink hover:text-canvas transition-all bg-canvas text-ink flex items-center gap-1.5 text-xs font-bold uppercase"
+              className="p-2 border border-l-0 border-ink hover:bg-ink hover:text-canvas transition-colors duration-100 flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest"
               title="Biblioteca de sustantivos"
             >
               <BookOpen className="w-4 h-4" />
@@ -395,60 +395,42 @@ export default function App() {
       </header>
 
       {/* MAIN GAMEPLAY AREA */}
-      <main id="gameplay-area" className="flex-1 grid grid-cols-12 gap-0 relative bg-canvas">
+      <main id="gameplay-area" className="flex-1 grid grid-cols-12 gap-0 relative bg-canvas overflow-hidden">
 
         {/* MASCULINE SIDEBAR RAIL (LEFT) */}
         <button
           id="masculine-sidebar-rail"
           onClick={() => handleAnswer('masculino')}
           disabled={gameState === 'answered'}
-          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-r-2 border-ink transition-all cursor-pointer select-none group relative overflow-hidden ${
+          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-r-2 border-ink transition-all duration-150 cursor-pointer select-none group relative overflow-hidden ${
             gameState === 'answered'
               ? activeNoun.gender === 'masculino'
-                ? 'bg-ink text-canvas opacity-100'
-                : 'bg-canvas text-ink-faint opacity-20 border-r border-dashed border-ink-faint'
+                ? 'bg-ink text-canvas'
+                : 'bg-canvas text-ink-faint opacity-30'
               : xOffset < -30
-                ? 'bg-surface-2 opacity-90 scale-105 border-r-4'
-                : 'bg-surface opacity-40 hover:opacity-80 hover:bg-surface-2'
+                ? 'bg-ink text-canvas'
+                : 'bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <div className="absolute top-4 left-4 text-[10px] uppercase font-mono tracking-wide opacity-60 flex items-center gap-1">
-            <span className="px-1 border border-ink rounded font-bold">A</span> O
-            <kbd className="px-1 font-bold">←</kbd>
-          </div>
-          <p className="text-7xl lg:text-9xl font-black tracking-tighter leading-none select-none transition-transform group-hover:scale-110" style={{ writingMode: 'vertical-rl' }}>
+          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-150 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
             EL
           </p>
-          <p className="mt-4 text-[11px] font-mono uppercase tracking-mega font-bold">Masculino</p>
+          <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Masculino</p>
         </button>
 
         {/* CENTRAL GAMEPLAY COLUMN */}
-        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-between p-4 md:p-8 relative overflow-y-auto min-h-[450px]">
-
-          {/* Top Score & Streak Indicators */}
-          <div className="w-full max-w-xl flex items-center justify-between border-b border-ink border-dashed pb-3 mb-2 md:mb-6">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-ink-dim uppercase tracking-wide">Racha:</span>
-              <span className="text-lg font-black italic text-ink bg-canvas px-2 py-0.5 border border-ink">
-                {streak} {streak === 1 ? 'ACIERTO' : 'ACIERTOS'}
-              </span>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] font-mono text-ink-dim uppercase tracking-widest">Puntuación:</span>
-              <p className="text-2xl font-black tracking-tight text-ink">{score}</p>
-            </div>
-          </div>
+        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-8 md:gap-10 p-6 md:p-10 relative overflow-y-auto min-h-[450px]">
 
           {/* DRAGGABLE CARD CONTAINER */}
-          <div className="w-full flex-1 flex flex-col items-center justify-center relative py-4">
+          <div className="w-full flex flex-col items-center justify-center relative">
 
             {isDragging && xOffset !== 0 && (
-              <div className="absolute inset-x-0 top-2 flex justify-between px-6 z-20 pointer-events-none">
-                <span className={`text-xs font-mono font-bold uppercase px-3 py-1 border-2 border-ink bg-ink text-canvas transition-opacity duration-150 ${xOffset < -20 ? 'opacity-100' : 'opacity-25'}`}>
-                  ← MASCULINO (EL)
+              <div className="absolute inset-x-0 -top-3 flex justify-between px-2 z-20 pointer-events-none">
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-100 ${xOffset < -20 ? 'opacity-100' : 'opacity-20'}`}>
+                  ← EL
                 </span>
-                <span className={`text-xs font-mono font-bold uppercase px-3 py-1 border-2 border-ink bg-ink text-canvas transition-opacity duration-150 ${xOffset > 20 ? 'opacity-100' : 'opacity-25'}`}>
-                  FEMENINO (LA) →
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-100 ${xOffset > 20 ? 'opacity-100' : 'opacity-20'}`}>
+                  LA →
                 </span>
               </div>
             )}
@@ -465,40 +447,39 @@ export default function App() {
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={`w-full max-w-md aspect-[4/3] bg-surface border-4 border-ink p-6 md:p-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-shadow duration-300 ${
-                isDragging ? 'shadow-brutal-lg' : ''
+              className={`w-full max-w-md aspect-[4/3] bg-surface border-2 border-ink px-6 py-8 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-all duration-200 ${
+                isDragging ? 'shadow-brutal-lg cursor-grabbing' : gameState === 'playing' ? 'cursor-grab' : ''
               } ${
                 gameState === 'answered'
                   ? lastAnswerWasCorrect
                     ? 'shadow-brutal-lg'
-                    : 'border-ink-faint shadow-brutal-sm bg-canvas border-dashed'
+                    : 'shadow-brutal-sm opacity-95'
                   : ''
               }`}
             >
-              {/* Header inside Card */}
-              <div className="absolute top-4 left-4 right-4 flex justify-between items-center opacity-60 text-[10px] font-mono uppercase tracking-widest">
-                <span>En cola {dueCount} · Dominadas {masteredCount}/{totalInDifficulty}</span>
-                <Chip active>{difficulty}</Chip>
-              </div>
+              {/* Minimal card meta */}
+              <span className="absolute top-3 right-3 text-[9px] font-mono uppercase tracking-widest text-ink-faint">
+                {difficulty}
+              </span>
 
               {/* CARD GAMEPLAY STATE DISPLAY */}
-              <div className="text-center w-full my-auto">
-                <h2 id="active-word-display" className="text-5xl md:text-6xl font-black uppercase tracking-tighter text-ink mb-2 select-none">
+              <div className="text-center w-full flex flex-col items-center justify-center">
+                <h2 id="active-word-display" className="text-5xl md:text-6xl font-black uppercase tracking-tighter text-ink select-none leading-none">
                   {activeNoun.word}
                 </h2>
 
                 {gameState === 'answered' && (
-                  <div className="animate-bounce">
-                    <span id="answer-stamp" className={`inline-block border-4 px-6 py-2 text-2xl font-black uppercase tracking-widest transform -rotate-3 ${
+                  <div className="mt-5 flex flex-col items-center">
+                    <span id="answer-stamp" className={`inline-block border-2 px-6 py-2 text-xl md:text-2xl font-black uppercase tracking-widest animate-stamp ${
                       lastAnswerWasCorrect
-                        ? 'border-ink text-ink bg-canvas'
-                        : 'border-ink-faint text-ink-faint bg-canvas line-through decoration-ink decoration-4'
+                        ? 'border-ink text-ink'
+                        : 'border-ink-faint text-ink-faint line-through decoration-ink decoration-2'
                     }`}>
-                      {lastAnswerWasCorrect ? '¡CORRECTO!' : '¡ERROR!'}
+                      {lastAnswerWasCorrect ? 'Correcto' : 'Error'}
                     </span>
-                    <p className="mt-2 text-lg font-bold">
-                      Es <span className="underline uppercase font-black text-ink">
-                        {activeNoun.gender === 'masculino' ? 'EL (MASCULINO)' : 'LA (FEMENINO)'}
+                    <p className="mt-4 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
+                      Es <span className="text-ink font-bold">
+                        {activeNoun.gender === 'masculino' ? 'EL · masculino' : 'LA · femenino'}
                       </span>
                     </p>
                   </div>
@@ -507,56 +488,52 @@ export default function App() {
 
               {/* Next button overlay if answered */}
               {gameState === 'answered' && (
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center px-4">
-                  <button
-                    id="btn-next-word"
-                    onClick={handleNext}
-                    className="w-full max-w-[200px] bg-ink text-canvas text-xs font-black uppercase py-2 px-4 border border-ink hover:bg-surface-2 hover:text-ink transition-colors shadow-brutal-sm flex items-center justify-center gap-1.5"
-                  >
-                    <span>SIGUIENTE</span>
-                    <ChevronRight className="w-4 h-4" />
-                    <kbd className="hidden md:inline px-1 bg-canvas text-ink rounded text-[8px] ml-1">ESPACIO</kbd>
-                  </button>
-                </div>
+                <button
+                  id="btn-next-word"
+                  onClick={handleNext}
+                  className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink transition-colors duration-100 flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
+                >
+                  <span>Siguiente</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               )}
             </div>
           </div>
 
           {/* RULE LESSON BOX */}
-          <div id="rule-lesson-box" className="w-full max-w-xl mt-4 min-h-[100px] transition-all">
+          <div id="rule-lesson-box" className="w-full max-w-md">
             {gameState === 'answered' ? (
-              <div className="border-2 border-ink bg-surface p-4 relative shadow-brutal-sm">
-                <div className="absolute -top-3 left-4 bg-ink text-canvas border border-ink px-2 py-0.5 text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
+              <div className="border-2 border-ink bg-surface p-4 relative animate-rise">
+                <div className="absolute -top-2.5 left-4 bg-ink text-canvas px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-widest flex items-center gap-1">
                   <Info className="w-3 h-3" />
                   {activeNoun.rule}
                 </div>
                 <p className="mt-2 text-xs md:text-sm text-ink/90 leading-relaxed font-mono">
                   {activeNoun.explanation}{' '}
-                  <span className="text-ink-dim not-italic">Ejemplo: <span className="underline italic text-ink">{activeNoun.example}</span></span>
+                  <span className="text-ink-dim">Ej: <span className="text-ink">{activeNoun.example}</span></span>
                 </p>
               </div>
             ) : (
-              <div className="border border-ink/30 border-dashed p-4 flex flex-col items-center justify-center text-center opacity-40 text-xs text-ink/70">
-                <HelpCircle className="w-5 h-5 mb-2 text-ink" />
-                <p>Responde para ver la regla gramatical.</p>
+              <div className="border border-ink-faint border-dashed p-4 flex items-center justify-center text-center min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
+                Responde para ver la regla
               </div>
             )}
           </div>
 
           {/* Quick Tap Buttons for Mobile */}
           {gameState === 'playing' && (
-            <div className="w-full max-w-md flex gap-4 mt-2 md:hidden">
+            <div className="w-full max-w-md flex gap-3 md:hidden">
               <button
                 onClick={() => handleAnswer('masculino')}
-                className="flex-1 bg-surface-2 border-2 border-ink text-ink py-3 px-2 font-black uppercase text-sm tracking-widest shadow-brutal-sm hover:bg-ink hover:text-canvas transition-colors"
+                className="flex-1 border-2 border-ink bg-surface text-ink py-3.5 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
               >
-                EL (MASC)
+                EL · masc
               </button>
               <button
                 onClick={() => handleAnswer('femenino')}
-                className="flex-1 bg-surface-2 border-2 border-ink text-ink py-3 px-2 font-black uppercase text-sm tracking-widest shadow-brutal-sm hover:bg-ink hover:text-canvas transition-colors"
+                className="flex-1 border-2 border-ink bg-surface text-ink py-3.5 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
               >
-                LA (FEM)
+                LA · fem
               </button>
             </div>
           )}
@@ -568,122 +545,126 @@ export default function App() {
           id="feminine-sidebar-rail"
           onClick={() => handleAnswer('femenino')}
           disabled={gameState === 'answered'}
-          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-l-2 border-ink transition-all cursor-pointer select-none group relative overflow-hidden ${
+          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-l-2 border-ink transition-all duration-150 cursor-pointer select-none group relative overflow-hidden ${
             gameState === 'answered'
               ? activeNoun.gender === 'femenino'
-                ? 'bg-ink text-canvas opacity-100'
-                : 'bg-canvas text-ink-faint opacity-20 border-l border-dashed border-ink-faint'
+                ? 'bg-ink text-canvas'
+                : 'bg-canvas text-ink-faint opacity-30'
               : xOffset > 30
-                ? 'bg-surface-2 opacity-90 scale-105 border-l-4'
-                : 'bg-surface opacity-40 hover:opacity-80 hover:bg-surface-2'
+                ? 'bg-ink text-canvas'
+                : 'bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <div className="absolute top-4 right-4 text-[10px] uppercase font-mono tracking-wide opacity-60 flex items-center gap-1">
-            <kbd className="px-1 font-bold">→</kbd>
-            O <span className="px-1 border border-ink rounded font-bold">D</span>
-          </div>
-          <p className="text-7xl lg:text-9xl font-black tracking-tighter leading-none select-none transition-transform group-hover:scale-110" style={{ writingMode: 'vertical-rl' }}>
+          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-150 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
             LA
           </p>
-          <p className="mt-4 text-[11px] font-mono uppercase tracking-mega font-bold">Femenino</p>
+          <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Femenino</p>
         </button>
 
       </main>
 
-      {/* FOOTER INFO BAR */}
-      <footer id="footer-container" className="border-t-2 border-ink p-4 md:p-6 bg-surface grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 z-10">
+      {/* FOOTER STAT RAIL */}
+      <footer id="footer-container" className="border-t-2 border-ink px-4 md:px-8 py-3.5 bg-canvas z-10">
+        <div className="flex items-stretch justify-between gap-4 md:gap-8 flex-wrap">
 
-        <StatWidget label="Progreso nivel">
-          <div className="flex justify-between items-center text-[10px] font-mono text-ink-dim mb-1.5">
-            <span>{practicedInDifficultyCount} / {totalInDifficulty} practicados</span>
-          </div>
-          <div className="h-3 w-full border border-ink bg-surface-inset relative overflow-hidden">
-            <div
-              className="absolute top-0 left-0 h-full bg-ink transition-all duration-500"
-              style={{ width: `${totalInDifficulty > 0 ? (practicedInDifficultyCount / totalInDifficulty) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="block text-[9px] font-mono text-ink-dim uppercase tracking-wide mt-1.5">
-            {Object.keys(srsState.cards).length} / {nounsData.length} en toda la base · {overallPracticedPercentage}%
-          </span>
-        </StatWidget>
+          <Stat label="Racha">
+            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{streak}</span>
+          </Stat>
 
-        <StatWidget label="Racha máxima" className="border-t border-ink/10 sm:border-t-0 sm:border-l border-ink/20 sm:pl-6">
-          <div className="flex items-center gap-2">
-            <Award className="w-5 h-5 text-ink" />
-            <span className="text-lg font-black text-ink uppercase font-mono italic">{maxStreak} correctos</span>
-          </div>
-        </StatWidget>
+          <Stat label="Puntos">
+            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{score}</span>
+          </Stat>
 
-        <StatWidget label="Atajos & reset" className="border-t border-ink/10 sm:border-t-0 sm:border-l border-ink/20 sm:pl-6">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center space-x-1.5 text-[9px] font-mono">
+          <Stat label="Máx">
+            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{maxStreak}</span>
+          </Stat>
+
+          <Stat label="En cola">
+            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{dueCount}</span>
+          </Stat>
+
+          {/* Level progress */}
+          <div className="flex flex-col justify-center gap-1.5 flex-1 min-w-[150px] max-w-sm">
+            <div className="flex justify-between text-[9px] font-mono uppercase tracking-widest text-ink-dim">
+              <span>Nivel · {difficulty}</span>
+              <span>{practicedInDifficultyCount}/{totalInDifficulty} · dom {masteredCount} · {overallPracticedPercentage}%</span>
+            </div>
+            <div className="h-2 w-full border border-ink bg-surface-inset relative overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 bg-ink transition-all duration-500"
+                style={{ width: `${totalInDifficulty > 0 ? (practicedInDifficultyCount / totalInDifficulty) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Shortcuts + reset */}
+          <div className="flex items-center gap-3 justify-end">
+            <div className="hidden lg:flex items-center gap-1.5 text-[9px] font-mono text-ink-dim uppercase tracking-wide">
               <kbd className="px-1.5 py-0.5 border border-ink bg-ink text-canvas font-bold">A</kbd>
-              <span className="opacity-80">MASC</span>
+              <span>masc</span>
               <kbd className="px-1.5 py-0.5 border border-ink bg-ink text-canvas font-bold ml-1">D</kbd>
-              <span className="opacity-80">FEM</span>
+              <span>fem</span>
             </div>
 
             <button
               id="btn-reset-stats"
               onClick={handleReset}
-              className="text-[10px] font-black uppercase text-ink-dim hover:text-ink px-2 py-1 border border-transparent hover:border-ink transition-colors flex items-center gap-1 bg-transparent cursor-pointer"
+              className="p-2 border border-ink-faint text-ink-dim hover:border-ink hover:text-ink transition-colors duration-100"
               title="Borrar todo el progreso"
             >
-              <RotateCcw className="w-3 h-3" />
-              Reiniciar
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
           </div>
-        </StatWidget>
 
+        </div>
       </footer>
 
       {/* --- NOUN DICTIONARY / LIBRARY OVERLAY PANEL --- */}
       {isLibraryOpen && (
-        <div id="library-overlay" className="absolute inset-0 bg-canvas/95 flex justify-end z-50 animate-fade-in">
+        <div id="library-overlay" className="absolute inset-0 bg-canvas/90 flex justify-end z-50 animate-fade-in">
 
-          <div className="w-full max-w-2xl bg-surface border-l-4 border-ink h-full flex flex-col justify-between shadow-2xl relative">
+          <div className="w-full max-w-2xl bg-surface border-l-2 border-ink h-full flex flex-col justify-between relative">
 
             {/* Library Header */}
-            <div className="p-6 border-b-2 border-ink bg-surface flex justify-between items-center">
-              <div className="flex items-center space-x-3">
-                <BookOpen className="w-6 h-6 text-ink" />
+            <div className="p-6 border-b-2 border-ink bg-canvas flex justify-between items-center gap-4">
+              <div className="flex items-center gap-3">
+                <BookOpen className="w-5 h-5 text-ink" />
                 <div>
-                  <h3 className="text-xl font-black uppercase tracking-tight">Diccionario de Sustantivos</h3>
-                  <p className="text-[10px] font-mono opacity-50 uppercase tracking-widest">{practicedLibraryNouns.length} palabras que ya practicaste, en el orden en que las respondiste</p>
+                  <h3 className="text-lg md:text-xl font-black uppercase tracking-tighter">Diccionario</h3>
+                  <p className="text-[9px] font-mono opacity-50 uppercase tracking-widest">{practicedLibraryNouns.length} palabras practicadas · orden de aparición</p>
                 </div>
               </div>
 
               <button
                 id="btn-close-library"
                 onClick={() => setIsLibraryOpen(false)}
-                className="p-1 border border-ink hover:bg-ink hover:text-canvas transition-colors"
+                className="p-1.5 border border-ink hover:bg-ink hover:text-canvas transition-colors duration-100"
                 title="Cerrar diccionario"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Filters Bar */}
-            <div className="p-4 border-b border-ink/20 bg-surface-2 space-y-3">
+            <div className="p-4 border-b border-ink-faint bg-surface-2 space-y-3">
               <div className="relative">
-                <Search className="w-4 h-4 text-ink/40 absolute left-3 top-3" />
+                <Search className="w-4 h-4 text-ink-dim absolute left-3 top-3" />
                 <input
                   type="text"
                   placeholder="Buscar palabra o regla..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-surface-inset border-2 border-ink py-2 pl-9 pr-4 text-sm font-mono text-ink focus:outline-none focus:border-ink"
+                  className="w-full bg-surface-inset border border-ink py-2 pl-9 pr-4 text-sm font-mono text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink"
                 />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-ink/50 hover:text-ink">
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-ink-dim hover:text-ink">
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
 
               <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-[9px] font-mono text-ink/40 uppercase mr-1 flex items-center gap-1">
+                <span className="text-[9px] font-mono text-ink-faint uppercase tracking-wide mr-1 flex items-center gap-1">
                   <ListFilter className="w-3 h-3" /> Filtrar:
                 </span>
 
@@ -707,19 +688,19 @@ export default function App() {
             </div>
 
             {/* Scrollable Word List */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3">
+            <div className="flex-1 p-4 overflow-y-auto space-y-2.5">
               {filteredLibraryNouns.length === 0 ? (
-                <div className="text-center py-12 text-ink/40">
-                  <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-ink" />
+                <div className="text-center py-12 text-ink-dim">
+                  <AlertTriangle className="w-7 h-7 mx-auto mb-3 text-ink" />
                   {practicedLibraryNouns.length === 0 ? (
                     <>
                       <p className="text-sm font-mono">Todavía no practicaste ningún sustantivo.</p>
-                      <p className="text-xs">Los que vayas respondiendo van a ir apareciendo acá.</p>
+                      <p className="text-xs text-ink-faint">Los que respondas van a aparecer acá.</p>
                     </>
                   ) : (
                     <>
                       <p className="text-sm font-mono">No se encontraron sustantivos.</p>
-                      <p className="text-xs">Prueba cambiando tu búsqueda o tus filtros.</p>
+                      <p className="text-xs text-ink-faint">Probá cambiando tu búsqueda o filtros.</p>
                     </>
                   )}
                 </div>
@@ -730,43 +711,43 @@ export default function App() {
                   return (
                     <div
                       key={idx}
-                      className={`border-2 p-4 transition-all bg-surface relative ${
+                      className={`border p-4 transition-colors duration-100 bg-surface relative ${
                         status === 'dominado'
                           ? 'border-ink hover:bg-surface-2'
                           : status === 'aprendiendo'
-                            ? 'border-ink-faint border-dashed hover:bg-surface-2'
-                            : 'border-ink/20 hover:border-ink/40'
+                            ? 'border-ink-faint hover:bg-surface-2'
+                            : 'border-ink-faint hover:border-ink-dim'
                       }`}
                     >
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[18px] font-black uppercase text-ink">
+                      <div className="flex justify-between items-start gap-3 mb-2.5">
+                        <span className="text-base md:text-lg font-black uppercase tracking-tight text-ink">
                           {noun.gender === 'masculino' ? 'EL' : 'LA'}{' '}
-                          <span className="underline decoration-ink decoration-2">{noun.word}</span>
+                          <span className="underline decoration-ink decoration-2 underline-offset-2">{noun.word}</span>
                         </span>
 
-                        <div className="flex items-center space-x-1.5">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <Chip active>{noun.difficulty}</Chip>
                           {status === 'dominado' && (
-                            <span className="text-ink bg-surface-2 p-0.5 border border-ink/40" title="Dominado">
+                            <span className="text-ink border border-ink p-0.5" title="Dominado">
                               <Check className="w-3 h-3" />
                             </span>
                           )}
                           {status === 'aprendiendo' && card && (
-                            <span className="text-[9px] font-mono uppercase bg-surface-2 text-ink-dim px-1.5 py-0.5 border border-ink/20" title="Aprendiendo">
+                            <span className="text-[9px] font-mono uppercase text-ink-dim px-1.5 py-0.5 border border-ink-faint" title="Aprendiendo">
                               Caja {card.box}
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="bg-canvas/50 p-2.5 border border-ink/10">
-                        <p className="text-[10px] font-mono text-ink uppercase mb-1 flex items-center gap-1 font-bold">
+                      <div className="border-t border-ink-faint pt-2.5">
+                        <p className="text-[10px] font-mono text-ink-dim uppercase tracking-wide mb-1 flex items-center gap-1 font-bold">
                           <Info className="w-3 h-3" />
                           {noun.rule}
                         </p>
-                        <p className="text-xs text-ink/80 font-sans leading-relaxed">
+                        <p className="text-xs text-ink/80 font-mono leading-relaxed">
                           {noun.explanation}{' '}
-                          <span className="text-ink/50">Ejemplo: <strong className="text-ink uppercase font-mono">{noun.example}</strong></span>
+                          <span className="text-ink-dim">Ej: <span className="text-ink">{noun.example}</span></span>
                         </p>
                       </div>
                     </div>
@@ -776,14 +757,14 @@ export default function App() {
             </div>
 
             {/* Library Footer summary */}
-            <div className="p-4 border-t-2 border-ink bg-surface flex items-center justify-between text-xs font-mono">
-              <span className="opacity-60 uppercase">Mostrando {filteredLibraryNouns.length} de {practicedLibraryNouns.length} palabras practicadas</span>
+            <div className="p-4 border-t-2 border-ink bg-canvas flex items-center justify-between text-[10px] font-mono uppercase tracking-widest">
+              <span className="text-ink-dim">{filteredLibraryNouns.length} / {practicedLibraryNouns.length} palabras</span>
               <button
                 onClick={() => {
                   setSearchQuery('');
                   setLibraryFilter('todos');
                 }}
-                className="text-ink hover:underline uppercase text-[10px] font-bold"
+                className="text-ink hover:underline font-bold"
               >
                 Limpiar filtros
               </button>
