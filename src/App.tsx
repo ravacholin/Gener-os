@@ -343,9 +343,9 @@ export default function App() {
   }, [xOffset, isDragging, gameState, userAnswer]);
 
   return (
-    <div id="app-root" className="w-full h-screen bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none">
+    <div id="app-root" className="w-full h-[100dvh] bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none">
       {/* HEADER SECTION */}
-      <header id="header-container" className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink px-4 md:px-8 py-4 bg-canvas z-10">
+      <header id="header-container" className="flex flex-wrap items-center justify-between gap-2 md:gap-3 border-b-2 border-ink px-4 md:px-8 py-2.5 md:py-4 bg-canvas z-10 shrink-0">
         <div className="flex items-baseline gap-3">
           <h1 id="app-title" className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
             Género
@@ -419,10 +419,10 @@ export default function App() {
         </button>
 
         {/* CENTRAL GAMEPLAY COLUMN */}
-        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-8 md:gap-10 p-6 md:p-10 relative overflow-y-auto min-h-[450px]">
+        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-3 md:gap-10 px-4 py-3 md:p-10 relative overflow-hidden min-h-0">
 
           {/* DRAGGABLE CARD CONTAINER */}
-          <div className="w-full flex flex-col items-center justify-center relative">
+          <div className="w-full flex-1 md:flex-none min-h-0 flex flex-col items-center justify-center relative">
 
             {isDragging && xOffset !== 0 && (
               <div className="absolute inset-x-0 -top-3 flex justify-between px-2 z-20 pointer-events-none">
@@ -447,7 +447,7 @@ export default function App() {
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={`w-full max-w-md aspect-[4/3] bg-surface border-2 border-ink px-6 py-8 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-all duration-200 ${
+              className={`w-full max-w-md aspect-[4/3] max-h-full md:max-h-none bg-surface border-2 border-ink px-4 py-6 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-all duration-200 ${
                 isDragging ? 'shadow-brutal-lg cursor-grabbing' : gameState === 'playing' ? 'cursor-grab' : ''
               } ${
                 gameState === 'answered'
@@ -464,7 +464,7 @@ export default function App() {
 
               {/* CARD GAMEPLAY STATE DISPLAY */}
               <div className="text-center w-full flex flex-col items-center justify-center">
-                <h2 id="active-word-display" className="text-5xl md:text-6xl font-black uppercase tracking-tighter text-ink select-none leading-none">
+                <h2 id="active-word-display" className="text-4xl sm:text-5xl md:text-6xl font-black uppercase tracking-tighter text-ink select-none leading-none">
                   {activeNoun.word}
                 </h2>
 
@@ -514,7 +514,7 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <div className="border border-ink-faint border-dashed p-4 flex items-center justify-center text-center min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
+              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center min-h-[52px] md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
                 Responde para ver la regla
               </div>
             )}
@@ -525,13 +525,13 @@ export default function App() {
             <div className="w-full max-w-md flex gap-3 md:hidden">
               <button
                 onClick={() => handleAnswer('masculino')}
-                className="flex-1 border-2 border-ink bg-surface text-ink py-3.5 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
+                className="flex-1 border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
               >
                 EL · masc
               </button>
               <button
                 onClick={() => handleAnswer('femenino')}
-                className="flex-1 border-2 border-ink bg-surface text-ink py-3.5 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
+                className="flex-1 border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
               >
                 LA · fem
               </button>
@@ -564,23 +564,23 @@ export default function App() {
       </main>
 
       {/* FOOTER STAT RAIL */}
-      <footer id="footer-container" className="border-t-2 border-ink px-4 md:px-8 py-3.5 bg-canvas z-10">
-        <div className="flex items-stretch justify-between gap-4 md:gap-8 flex-wrap">
+      <footer id="footer-container" className="border-t-2 border-ink px-4 md:px-8 py-2.5 md:py-3.5 bg-canvas z-10 shrink-0">
+        <div className="flex items-stretch justify-between gap-3 md:gap-8 flex-wrap">
 
           <Stat label="Racha">
-            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{streak}</span>
+            <span className="text-xl md:text-3xl font-black tabular-nums leading-none">{streak}</span>
           </Stat>
 
           <Stat label="Puntos">
-            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{score}</span>
+            <span className="text-xl md:text-3xl font-black tabular-nums leading-none">{score}</span>
           </Stat>
 
           <Stat label="Máx">
-            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{maxStreak}</span>
+            <span className="text-xl md:text-3xl font-black tabular-nums leading-none">{maxStreak}</span>
           </Stat>
 
           <Stat label="En cola">
-            <span className="text-2xl md:text-3xl font-black tabular-nums leading-none">{dueCount}</span>
+            <span className="text-xl md:text-3xl font-black tabular-nums leading-none">{dueCount}</span>
           </Stat>
 
           {/* Level progress */}
