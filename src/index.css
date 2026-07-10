@@ -1,28 +1,50 @@
 @import "tailwindcss";
 
 @theme {
-  /* Superficies */
-  --color-canvas: #0A0A0A;
-  --color-surface: #111110;
-  --color-surface-2: #1B1A18;
-  --color-surface-inset: #050504;
+  /* Superficies — negros neutros fríos */
+  --color-canvas: #08080A;
+  --color-surface: #0F0F12;
+  --color-surface-2: #17171B;
+  --color-surface-inset: #050506;
 
-  /* Tinta */
-  --color-ink: #F2F0EA;
-  --color-ink-dim: #8C8880;
-  --color-ink-faint: #47443F;
+  /* Tinta — blanco frío nítido, escala de grises */
+  --color-ink: #FAFAFA;
+  --color-ink-dim: #7E7E88;
+  --color-ink-faint: #34343B;
 
-  /* Acento — uso restringido (racha/aciertos) */
-  --color-accent: #C9FF3B;
+  /* Tipografía */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
-  /* Sombras offset brutalistas */
-  --shadow-brutal-sm: 4px 4px 0px 0px var(--color-ink);
-  --shadow-brutal-md: 8px 8px 0px 0px var(--color-ink);
-  --shadow-brutal-lg: 14px 14px 0px 0px var(--color-ink);
+  /* Sombras offset brutalistas — duras, sin desenfoque */
+  --shadow-brutal-sm: 3px 3px 0px 0px var(--color-ink);
+  --shadow-brutal-md: 6px 6px 0px 0px var(--color-ink);
+  --shadow-brutal-lg: 12px 12px 0px 0px var(--color-ink);
 
   /* Tracking */
-  --tracking-tighter: -0.04em;
+  --tracking-tighter: -0.045em;
   --tracking-wide: 0.06em;
-  --tracking-widest: 0.14em;
-  --tracking-mega: 0.3em;
+  --tracking-widest: 0.16em;
+  --tracking-mega: 0.34em;
+
+  /* Movimiento — corto y nítido */
+  --animate-fade-in: fade-in 0.18s ease-out;
+  --animate-stamp: stamp 0.22s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  --animate-rise: rise 0.2s ease-out both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes stamp {
+  0% { opacity: 0; transform: scale(1.6) rotate(-3deg); }
+  60% { opacity: 1; transform: scale(0.94) rotate(-3deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
