@@ -28,9 +28,9 @@
   --tracking-mega: 0.34em;
 
   /* Movimiento — corto y nítido */
-  --animate-fade-in: fade-in 0.18s ease-out;
-  --animate-stamp: stamp 0.22s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
-  --animate-rise: rise 0.2s ease-out both;
+  --animate-fade-in: fade-in 0.1s linear;
+  --animate-stamp: stamp 0.12s cubic-bezier(0.2, 0, 0, 1) both;
+  --animate-rise: rise 0.12s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 @keyframes fade-in {
@@ -39,12 +39,20 @@
 }
 
 @keyframes stamp {
-  0% { opacity: 0; transform: scale(1.6) rotate(-3deg); }
-  60% { opacity: 1; transform: scale(0.94) rotate(-3deg); }
+  0% { opacity: 0; transform: scale(1.3) rotate(-3deg); }
   100% { opacity: 1; transform: scale(1) rotate(-3deg); }
 }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Monochrome gender textures — no color, hairline stripe vs dot grid */
+.pattern-stripes {
+  background-image: repeating-linear-gradient(45deg, var(--color-ink-faint) 0 1px, transparent 1px 8px);
+}
+.pattern-dots {
+  background-image: radial-gradient(var(--color-ink-faint) 1px, transparent 1px);
+  background-size: 8px 8px;
 }

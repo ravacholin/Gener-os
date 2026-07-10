@@ -26,13 +26,19 @@ type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado';
 // --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
 
 function Chip({ active, onClick, children, title, id }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; id?: string }) {
-  const className = `px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-widest border transition-colors duration-100 whitespace-nowrap ${
+  const className = `px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-widest border whitespace-nowrap ${
     active ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
   } ${onClick ? 'hover:text-ink hover:border-ink-dim cursor-pointer' : ''}`;
   if (onClick) {
     return <button id={id} onClick={onClick} title={title} className={className}>{children}</button>;
   }
   return <span id={id} title={title} className={className}>{children}</span>;
+}
+
+function wordSizeClass(len: number): string {
+  if (len > 22) return 'text-2xl sm:text-3xl md:text-4xl';
+  if (len > 14) return 'text-3xl sm:text-4xl md:text-5xl';
+  return 'text-4xl sm:text-5xl md:text-6xl';
 }
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
@@ -324,7 +330,7 @@ export default function App() {
       const tilt = userAnswer === 'masculino' ? -4 : 4;
       return {
         transform: `rotate(${tilt}deg)`,
-        transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+        transition: 'transform 0.15s cubic-bezier(0.2, 0, 0, 1)'
       };
     }
 
@@ -338,7 +344,7 @@ export default function App() {
 
     return {
       transform: 'none',
-      transition: 'transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+      transition: 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)'
     };
   }, [xOffset, isDragging, gameState, userAnswer]);
 
@@ -362,7 +368,7 @@ export default function App() {
                 key={diff}
                 id={`btn-diff-${diff}`}
                 onClick={() => handleDifficultyChange(diff)}
-                className={`px-2.5 md:px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest transition-colors duration-100 ${
+                className={`px-2.5 md:px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest ${
                   i > 0 ? 'border-l border-ink' : ''
                 } ${difficulty === diff ? 'bg-ink text-canvas' : 'text-ink-dim hover:text-ink'}`}
               >
@@ -375,7 +381,7 @@ export default function App() {
             <button
               id="btn-mute-toggle"
               onClick={toggleMute}
-              className="p-2 border border-ink hover:bg-ink hover:text-canvas transition-colors duration-100"
+              className="p-2 border border-ink hover:bg-ink hover:text-canvas"
               title={isMuted ? "Activar sonido" : "Silenciar"}
             >
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -384,7 +390,7 @@ export default function App() {
             <button
               id="btn-open-library"
               onClick={() => setIsLibraryOpen(true)}
-              className="p-2 border border-l-0 border-ink hover:bg-ink hover:text-canvas transition-colors duration-100 flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest"
+              className="p-2 border border-l-0 border-ink hover:bg-ink hover:text-canvas flex items-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest"
               title="Biblioteca de sustantivos"
             >
               <BookOpen className="w-4 h-4" />
@@ -395,24 +401,25 @@ export default function App() {
       </header>
 
       {/* MAIN GAMEPLAY AREA */}
-      <main id="gameplay-area" className="flex-1 grid grid-cols-12 gap-0 relative bg-canvas overflow-hidden">
+      <main id="gameplay-area" className="flex-1 min-h-0 grid grid-cols-12 gap-0 relative bg-canvas overflow-hidden">
 
         {/* MASCULINE SIDEBAR RAIL (LEFT) */}
         <button
           id="masculine-sidebar-rail"
           onClick={() => handleAnswer('masculino')}
           disabled={gameState === 'answered'}
-          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-r-2 border-ink transition-all duration-150 cursor-pointer select-none group relative overflow-hidden ${
+          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-r-2 border-ink transition-[background-color,box-shadow] duration-75 cursor-pointer select-none group relative overflow-hidden ${
             gameState === 'answered'
               ? activeNoun.gender === 'masculino'
                 ? 'bg-ink text-canvas'
-                : 'bg-canvas text-ink-faint opacity-30'
+                : 'pattern-stripes bg-canvas text-ink-faint opacity-30'
               : xOffset < -30
                 ? 'bg-ink text-canvas'
-                : 'bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
+                : 'pattern-stripes bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-150 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
+          <span className="text-3xl md:text-4xl font-black leading-none select-none mb-2" aria-hidden="true">♂</span>
+          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-75 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
             EL
           </p>
           <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Masculino</p>
@@ -426,11 +433,11 @@ export default function App() {
 
             {isDragging && xOffset !== 0 && (
               <div className="absolute inset-x-0 -top-3 flex justify-between px-2 z-20 pointer-events-none">
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-100 ${xOffset < -20 ? 'opacity-100' : 'opacity-20'}`}>
-                  ← EL
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset < -20 ? 'opacity-100' : 'opacity-20'}`}>
+                  ← ♂ EL
                 </span>
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-100 ${xOffset > 20 ? 'opacity-100' : 'opacity-20'}`}>
-                  LA →
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset > 20 ? 'opacity-100' : 'opacity-20'}`}>
+                  ♀ LA →
                 </span>
               </div>
             )}
@@ -447,7 +454,7 @@ export default function App() {
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={`w-full max-w-md aspect-[4/3] max-h-full md:max-h-none bg-surface border-2 border-ink px-4 py-6 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-all duration-200 ${
+              className={`w-full max-w-md aspect-[4/3] max-h-full md:max-h-none bg-surface border-2 border-ink px-4 py-6 md:px-10 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-[box-shadow,opacity] duration-75 ${
                 isDragging ? 'shadow-brutal-lg cursor-grabbing' : gameState === 'playing' ? 'cursor-grab' : ''
               } ${
                 gameState === 'answered'
@@ -464,7 +471,7 @@ export default function App() {
 
               {/* CARD GAMEPLAY STATE DISPLAY */}
               <div className="text-center w-full flex flex-col items-center justify-center">
-                <h2 id="active-word-display" className="text-4xl sm:text-5xl md:text-6xl font-black uppercase tracking-tighter text-ink select-none leading-none">
+                <h2 id="active-word-display" className={`${wordSizeClass(activeNoun.word.length)} font-black uppercase tracking-tighter text-ink select-none leading-none`}>
                   {activeNoun.word}
                 </h2>
 
@@ -479,7 +486,7 @@ export default function App() {
                     </span>
                     <p className="mt-4 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
                       Es <span className="text-ink font-bold">
-                        {activeNoun.gender === 'masculino' ? 'EL · masculino' : 'LA · femenino'}
+                        {activeNoun.gender === 'masculino' ? '♂ EL · masculino' : '♀ LA · femenino'}
                       </span>
                     </p>
                   </div>
@@ -491,7 +498,7 @@ export default function App() {
                 <button
                   id="btn-next-word"
                   onClick={handleNext}
-                  className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink transition-colors duration-100 flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
+                  className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
                 >
                   <span>Siguiente</span>
                   <ChevronRight className="w-4 h-4" />
@@ -503,7 +510,7 @@ export default function App() {
           {/* RULE LESSON BOX */}
           <div id="rule-lesson-box" className="w-full max-w-md">
             {gameState === 'answered' ? (
-              <div className="border-2 border-ink bg-surface p-4 relative animate-rise">
+              <div className="border-2 border-ink bg-surface p-4 relative animate-rise min-h-[52px] md:min-h-[88px] max-h-[72px] md:max-h-[112px] overflow-y-auto">
                 <div className="absolute -top-2.5 left-4 bg-ink text-canvas px-2 py-0.5 text-[9px] font-mono font-black uppercase tracking-widest flex items-center gap-1">
                   <Info className="w-3 h-3" />
                   {activeNoun.rule}
@@ -521,22 +528,20 @@ export default function App() {
           </div>
 
           {/* Quick Tap Buttons for Mobile */}
-          {gameState === 'playing' && (
-            <div className="w-full max-w-md flex gap-3 md:hidden">
-              <button
-                onClick={() => handleAnswer('masculino')}
-                className="flex-1 border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
-              >
-                EL · masc
-              </button>
-              <button
-                onClick={() => handleAnswer('femenino')}
-                className="flex-1 border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas transition-colors duration-100"
-              >
-                LA · fem
-              </button>
-            </div>
-          )}
+          <div className={`w-full max-w-md flex gap-3 md:hidden ${gameState === 'answered' ? 'invisible pointer-events-none' : ''}`}>
+            <button
+              onClick={() => handleAnswer('masculino')}
+              className="flex-1 pattern-stripes border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
+            >
+              ♂ EL · masc
+            </button>
+            <button
+              onClick={() => handleAnswer('femenino')}
+              className="flex-1 pattern-dots border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
+            >
+              ♀ LA · fem
+            </button>
+          </div>
 
         </div>
 
@@ -545,17 +550,18 @@ export default function App() {
           id="feminine-sidebar-rail"
           onClick={() => handleAnswer('femenino')}
           disabled={gameState === 'answered'}
-          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-l-2 border-ink transition-all duration-150 cursor-pointer select-none group relative overflow-hidden ${
+          className={`col-span-2 hidden md:flex flex-col items-center justify-center border-l-2 border-ink transition-[background-color,box-shadow] duration-75 cursor-pointer select-none group relative overflow-hidden ${
             gameState === 'answered'
               ? activeNoun.gender === 'femenino'
                 ? 'bg-ink text-canvas'
-                : 'bg-canvas text-ink-faint opacity-30'
+                : 'pattern-dots bg-canvas text-ink-faint opacity-30'
               : xOffset > 30
                 ? 'bg-ink text-canvas'
-                : 'bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
+                : 'pattern-dots bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-150 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
+          <span className="text-3xl md:text-4xl font-black leading-none select-none mb-2" aria-hidden="true">♀</span>
+          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-75 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
             LA
           </p>
           <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Femenino</p>
@@ -609,7 +615,7 @@ export default function App() {
             <button
               id="btn-reset-stats"
               onClick={handleReset}
-              className="p-2 border border-ink-faint text-ink-dim hover:border-ink hover:text-ink transition-colors duration-100"
+              className="p-2 border border-ink-faint text-ink-dim hover:border-ink hover:text-ink"
               title="Borrar todo el progreso"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -638,7 +644,7 @@ export default function App() {
               <button
                 id="btn-close-library"
                 onClick={() => setIsLibraryOpen(false)}
-                className="p-1.5 border border-ink hover:bg-ink hover:text-canvas transition-colors duration-100"
+                className="p-1.5 border border-ink hover:bg-ink hover:text-canvas"
                 title="Cerrar diccionario"
               >
                 <X className="w-5 h-5" />
@@ -711,7 +717,7 @@ export default function App() {
                   return (
                     <div
                       key={idx}
-                      className={`border p-4 transition-colors duration-100 bg-surface relative ${
+                      className={`border p-4 bg-surface relative ${
                         status === 'dominado'
                           ? 'border-ink hover:bg-surface-2'
                           : status === 'aprendiendo'
@@ -721,7 +727,7 @@ export default function App() {
                     >
                       <div className="flex justify-between items-start gap-3 mb-2.5">
                         <span className="text-base md:text-lg font-black uppercase tracking-tight text-ink">
-                          {noun.gender === 'masculino' ? 'EL' : 'LA'}{' '}
+                          {noun.gender === 'masculino' ? '♂ EL' : '♀ LA'}{' '}
                           <span className="underline decoration-ink decoration-2 underline-offset-2">{noun.word}</span>
                         </span>
 
