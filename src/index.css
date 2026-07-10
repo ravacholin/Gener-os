@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Bloquea el scroll del documento: #app-root se mide con --app-height (JS) y ninguna
+   barra puede quedar fuera de pantalla. Sin esto, un #app-root más alto que el viewport
+   visible (bug de 100dvh en algunos navegadores Android/WebView) hace scrollear el body. */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  position: fixed;
+  inset: 0;
+}
+
 @theme {
   /* Superficies — negros neutros fríos */
   --color-canvas: #08080A;

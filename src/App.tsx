@@ -365,10 +365,33 @@ export default function App() {
     setIsRuleClamped(!!el && el.scrollHeight > el.clientHeight + 1);
   }, [gameState, activeNoun]);
 
+  // Ancla #app-root a la altura visible REAL del viewport. 100dvh no es fiable en
+  // algunos navegadores Android/WebView (se resuelve más alto que el área visible),
+  // lo que hacía scrollear la página y ocultaba la barra superior o la inferior.
+  useEffect(() => {
+    const setAppHeight = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${h}px`);
+    };
+    setAppHeight();
+    window.addEventListener('resize', setAppHeight);
+    window.addEventListener('orientationchange', setAppHeight);
+    window.visualViewport?.addEventListener('resize', setAppHeight);
+    return () => {
+      window.removeEventListener('resize', setAppHeight);
+      window.removeEventListener('orientationchange', setAppHeight);
+      window.visualViewport?.removeEventListener('resize', setAppHeight);
+    };
+  }, []);
+
   return (
-    <div id="app-root" className="w-full h-[100dvh] bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none">
+    <div
+      id="app-root"
+      style={{ height: 'var(--app-height, 100dvh)' }}
+      className="w-full bg-canvas text-ink font-sans flex flex-col justify-between overflow-hidden select-none"
+    >
       {/* HEADER SECTION */}
-      <header id="header-container" className="flex flex-wrap items-center justify-between gap-2 md:gap-3 border-b-2 border-ink px-4 md:px-8 py-2.5 md:py-4 bg-canvas z-10 shrink-0">
+      <header id="header-container" style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }} className="flex flex-wrap items-center justify-between gap-2 md:gap-3 border-b-2 border-ink px-4 md:px-8 py-2.5 md:py-4 bg-canvas z-10 shrink-0">
         <div className="flex items-baseline gap-3">
           <h1 id="app-title" className="text-2xl md:text-3xl font-black uppercase tracking-tighter leading-none">
             Género
@@ -598,7 +621,7 @@ export default function App() {
       </main>
 
       {/* FOOTER STAT RAIL */}
-      <footer id="footer-container" className="border-t-2 border-ink px-4 md:px-8 py-2.5 md:py-3.5 bg-canvas z-10 shrink-0">
+      <footer id="footer-container" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }} className="border-t-2 border-ink px-4 md:px-8 py-2.5 md:py-3.5 bg-canvas z-10 shrink-0">
         <div className="flex items-stretch justify-between gap-3 md:gap-8 flex-wrap">
 
           <Stat label="Racha">
