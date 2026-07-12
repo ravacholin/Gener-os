@@ -16,6 +16,8 @@ import {
   Check,
   AlertTriangle,
   ListFilter,
+  Mars,
+  Venus,
 } from 'lucide-react';
 import { nounsData, Noun } from './nouns';
 import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, isDue, SRS_STORAGE_KEY } from './srs';
@@ -458,11 +460,8 @@ export default function App() {
                 : 'pattern-stripes bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <span className="text-3xl md:text-4xl font-black leading-none select-none mb-2" aria-hidden="true">♂</span>
-          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-75 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
-            EL
-          </p>
-          <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Masculino</p>
+          <Mars className="w-16 h-16 lg:w-24 lg:h-24 select-none transition-transform duration-75 group-hover:scale-105" strokeWidth={2.5} aria-hidden="true" />
+          <p className="mt-6 text-base lg:text-xl font-black uppercase tracking-mega select-none" style={{ writingMode: 'vertical-rl' }}>Masculino</p>
         </button>
 
         {/* CENTRAL GAMEPLAY COLUMN */}
@@ -473,11 +472,11 @@ export default function App() {
 
             {isDragging && xOffset !== 0 && (
               <div className="absolute inset-x-0 -top-3 flex justify-between px-2 z-20 pointer-events-none">
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset < -20 ? 'opacity-100' : 'opacity-20'}`}>
-                  ← ♂ EL
+                <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset < -20 ? 'opacity-100' : 'opacity-20'}`}>
+                  ← <Mars className="w-3 h-3" aria-hidden="true" /> Masculino
                 </span>
-                <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset > 20 ? 'opacity-100' : 'opacity-20'}`}>
-                  ♀ LA →
+                <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 border border-ink bg-ink text-canvas transition-opacity duration-75 ${xOffset > 20 ? 'opacity-100' : 'opacity-20'}`}>
+                  <Venus className="w-3 h-3" aria-hidden="true" /> Femenino →
                 </span>
               </div>
             )}
@@ -525,8 +524,10 @@ export default function App() {
                       {lastAnswerWasCorrect ? 'Correcto' : 'Error'}
                     </span>
                     <p className="mt-2.5 md:mt-4 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
-                      Es <span className="text-ink font-bold">
-                        {activeNoun.gender === 'masculino' ? '♂ EL · masculino' : '♀ LA · femenino'}
+                      Es <span className="text-ink font-bold inline-flex items-center gap-1 align-middle">
+                        {activeNoun.gender === 'masculino'
+                          ? <><Mars className="w-4 h-4" aria-hidden="true" /> masculino</>
+                          : <><Venus className="w-4 h-4" aria-hidden="true" /> femenino</>}
                       </span>
                     </p>
                   </div>
@@ -582,15 +583,15 @@ export default function App() {
           <div className={`w-full max-w-md flex gap-3 md:hidden ${gameState === 'answered' ? 'invisible pointer-events-none' : ''}`}>
             <button
               onClick={() => handleAnswer('masculino')}
-              className="flex-1 pattern-stripes border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
+              className="flex-1 flex items-center justify-center gap-2 pattern-stripes border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
             >
-              ♂ EL · masc
+              <Mars className="w-4 h-4" aria-hidden="true" /> Masculino
             </button>
             <button
               onClick={() => handleAnswer('femenino')}
-              className="flex-1 pattern-dots border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
+              className="flex-1 flex items-center justify-center gap-2 pattern-dots border-2 border-ink bg-surface text-ink py-3 font-mono font-black uppercase text-xs tracking-widest shadow-brutal-sm active:bg-ink active:text-canvas"
             >
-              ♀ LA · fem
+              <Venus className="w-4 h-4" aria-hidden="true" /> Femenino
             </button>
           </div>
 
@@ -611,11 +612,8 @@ export default function App() {
                 : 'pattern-dots bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
-          <span className="text-3xl md:text-4xl font-black leading-none select-none mb-2" aria-hidden="true">♀</span>
-          <p className="text-7xl lg:text-[8rem] font-black tracking-tighter leading-none select-none transition-transform duration-75 group-hover:scale-105" style={{ writingMode: 'vertical-rl' }}>
-            LA
-          </p>
-          <p className="mt-6 text-[10px] font-mono uppercase tracking-mega font-bold">Femenino</p>
+          <Venus className="w-16 h-16 lg:w-24 lg:h-24 select-none transition-transform duration-75 group-hover:scale-105" strokeWidth={2.5} aria-hidden="true" />
+          <p className="mt-6 text-base lg:text-xl font-black uppercase tracking-mega select-none" style={{ writingMode: 'vertical-rl' }}>Femenino</p>
         </button>
 
       </main>
@@ -777,8 +775,10 @@ export default function App() {
                       }`}
                     >
                       <div className="flex justify-between items-start gap-3 mb-2.5">
-                        <span className="text-base md:text-lg font-black uppercase tracking-tight text-ink">
-                          {noun.gender === 'masculino' ? '♂ EL' : '♀ LA'}{' '}
+                        <span className="text-base md:text-lg font-black uppercase tracking-tight text-ink inline-flex items-center gap-1.5">
+                          {noun.gender === 'masculino'
+                            ? <Mars className="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />
+                            : <Venus className="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />}
                           <span className="underline decoration-ink decoration-2 underline-offset-2">{noun.word}</span>
                         </span>
 
