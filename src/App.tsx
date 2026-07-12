@@ -466,10 +466,10 @@ export default function App() {
         </button>
 
         {/* CENTRAL GAMEPLAY COLUMN */}
-        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-3 md:gap-10 px-4 py-3 md:p-10 relative overflow-hidden min-h-0">
+        <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-3 md:gap-6 px-4 py-3 md:px-10 md:py-6 relative overflow-hidden min-h-0">
 
           {/* DRAGGABLE CARD CONTAINER */}
-          <div className="w-full flex-1 md:flex-none min-h-0 flex flex-col items-center justify-center relative">
+          <div className="w-full flex-1 min-h-0 md:max-h-[380px] flex flex-col items-center justify-center relative">
 
             {isDragging && xOffset !== 0 && (
               <div className="absolute inset-x-0 -top-3 flex justify-between px-2 z-20 pointer-events-none">
@@ -494,7 +494,7 @@ export default function App() {
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={`w-full max-w-md h-56 md:h-auto md:aspect-[4/3] min-h-0 overflow-hidden bg-surface border-2 border-ink px-4 py-4 md:px-10 md:py-6 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-[box-shadow,opacity] duration-75 ${
+              className={`w-full max-w-md h-56 md:h-full min-h-0 overflow-hidden bg-surface border-2 border-ink px-4 py-4 md:px-10 md:py-6 relative flex flex-col items-center justify-center select-none shadow-brutal-md transition-[box-shadow,opacity] duration-75 ${
                 isDragging ? 'shadow-brutal-lg cursor-grabbing' : gameState === 'playing' ? 'cursor-grab' : ''
               } ${
                 gameState === 'answered'
