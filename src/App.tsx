@@ -573,9 +573,7 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <div className="border border-ink-faint border-dashed p-3 md:p-4 flex items-center justify-center text-center h-28 md:h-auto md:min-h-[88px] text-[11px] font-mono uppercase tracking-wide text-ink-faint">
-                Responde para ver la regla
-              </div>
+              <div aria-hidden="true" className="h-28 md:h-auto md:min-h-[88px]" />
             )}
           </div>
 
