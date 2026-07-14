@@ -534,18 +534,23 @@ export default function App() {
                 )}
               </div>
 
-              {/* Next button overlay if answered */}
-              {gameState === 'answered' && (
-                <button
-                  id="btn-next-word"
-                  onClick={handleNext}
-                  className="absolute -bottom-4 md:-bottom-5 left-1/2 -translate-x-1/2 bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-canvas hover:bg-canvas hover:text-ink hover:border-ink flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap"
-                >
-                  <span>Siguiente</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              )}
             </div>
+          </div>
+
+          {/* NEXT BUTTON SLOT — sits in flow between the card and the rule box.
+              Reserves its height in both states so the flex-1 card container
+              doesn't resize (no reflow) between playing/answered. */}
+          <div className="w-full max-w-md shrink-0 h-10 flex items-center justify-center">
+            {gameState === 'answered' && (
+              <button
+                id="btn-next-word"
+                onClick={handleNext}
+                className="mx-auto bg-ink text-canvas text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-ink hover:bg-canvas hover:text-ink hover:border-ink flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap animate-rise"
+              >
+                <span>Siguiente</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* RULE LESSON BOX — fixed compact height in both states so the layout
