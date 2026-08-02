@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Noun } from './nouns';
+import { DifficultyMix, Noun } from './nouns';
 
 export type SrsBox = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -161,13 +161,46 @@ function weightedRandomPick(pool: Noun[], state: SrsState): Noun {
 }
 
 /**
+ * Agrupa el pool por dificultad y elige una bolsa respetando las frecuencias de la
+ * mezcla. Solo compiten las dificultades presentes en el pool: la cuota de una bolsa
+ * vacía se reparte entre las demás.
+ */
+function pickBucket(pool: Noun[], mix: DifficultyMix): Noun[] {
+  const buckets = new Map<Noun['difficulty'], Noun[]>();
+  for (const noun of pool) {
+    const list = buckets.get(noun.difficulty);
+    if (list) list.push(noun);
+    else buckets.set(noun.difficulty, [noun]);
+  }
+
+  const entries = [...buckets.entries()]
+    .map(([difficulty, nouns]) => ({ nouns, share: mix[difficulty] ?? 0 }))
+    .filter(entry => entry.share > 0);
+  const totalShare = entries.reduce((sum, entry) => sum + entry.share, 0);
+  if (totalShare <= 0) return pool;
+
+  let target = Math.random() * totalShare;
+  for (const entry of entries) {
+    target -= entry.share;
+    if (target <= 0) return entry.nouns;
+  }
+  return entries[entries.length - 1].nouns;
+}
+
+/**
  * Picks the next word to show. Prefers due/unseen cards so errors resurface soon
  * and mastered words stay spaced out; falls back to a box-weighted pick across the
  * whole pool so the game never runs out of cards even when everything is caught up.
+ *
+ * Con `mix`, primero sortea la dificultad según las frecuencias del nivel y recién
+ * después aplica el SRS dentro de esa bolsa. El orden importa: si filtráramos por
+ * vencidas antes de mezclar, las fáciles ya dominadas (agendadas a días vista)
+ * desaparecerían del nivel avanzado y la mezcla quedaría en nada.
  */
-export function pickNextWord(pool: Noun[], state: SrsState, avoidWord?: string): Noun {
+export function pickNextWord(pool: Noun[], state: SrsState, avoidWord?: string, mix?: DifficultyMix): Noun {
   const candidates = pool.length > 1 ? pool.filter(n => n.word !== avoidWord) : pool;
-  const due = candidates.filter(n => isDue(n, state));
-  const source = due.length > 0 ? due : candidates;
+  const bucket = mix ? pickBucket(candidates, mix) : candidates;
+  const due = bucket.filter(n => isDue(n, state));
+  const source = due.length > 0 ? due : bucket;
   return weightedRandomPick(source, state);
 }

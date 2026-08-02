@@ -19,11 +19,12 @@ import {
   Mars,
   Venus,
 } from 'lucide-react';
-import { nounsData, Noun } from './nouns';
+import { nounsData, Noun, Difficulty, DIFFICULTIES, LEVEL_MIX, poolForLevel } from './nouns';
 import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, isDue, SRS_STORAGE_KEY } from './srs';
 
-type Difficulty = 'fácil' | 'medio' | 'difícil';
 type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado';
+
+const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = { 'fácil': 10, 'medio': 20, 'difícil': 30 };
 
 // --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
 
@@ -111,7 +112,17 @@ export default function App() {
   };
 
   // --- FILTERED NOUNS ---
+  // El pool de juego mezcla la dificultad elegida con una parte de las anteriores
+  // (ver LEVEL_MIX); la mezcla decide con qué frecuencia sale cada bolsa.
+  const levelMix = LEVEL_MIX[difficulty];
+
   const currentFilteredNouns = useMemo(() => {
+    return poolForLevel(nounsData, difficulty);
+  }, [difficulty]);
+
+  // Palabras propias del nivel: es lo que mide la barra de progreso, para que el
+  // porcentaje siga hablando del nivel y no de las palabras arrastradas.
+  const levelOwnNouns = useMemo(() => {
     return nounsData.filter(noun => noun.difficulty === difficulty);
   }, [difficulty]);
 
@@ -124,7 +135,7 @@ export default function App() {
     if (currentFilteredNouns.length === 0) return;
     if (!activeWord || !currentFilteredNouns.some(n => n.word === activeWord)) {
       // Intentionally not depending on srsState: re-picking on every answer would fight handleNext's own pick.
-      setActiveWord(pickNextWord(currentFilteredNouns, srsState).word);
+      setActiveWord(pickNextWord(currentFilteredNouns, srsState, undefined, levelMix).word);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFilteredNouns]);
@@ -177,7 +188,8 @@ export default function App() {
     setSrsState(nextSrs);
     persistSrsState(nextSrs);
 
-    const newScore = isCorrect ? score + (difficulty === 'fácil' ? 10 : difficulty === 'medio' ? 20 : 30) : score;
+    // Los puntos siguen a la palabra, no al nivel: una fácil mezclada en difícil vale como fácil.
+    const newScore = isCorrect ? score + POINTS_BY_DIFFICULTY[activeNoun.difficulty] : score;
     const newStreak = isCorrect ? streak + 1 : 0;
     const newMaxStreak = Math.max(maxStreak, newStreak);
     saveScoreStats(newScore, newStreak, newMaxStreak);
@@ -189,7 +201,7 @@ export default function App() {
     setGameState('playing');
     setUserAnswer(null);
     setXOffset(0);
-    setActiveWord(pickNextWord(currentFilteredNouns, srsState, activeNoun.word).word);
+    setActiveWord(pickNextWord(currentFilteredNouns, srsState, activeNoun.word, levelMix).word);
   };
 
   // Reset current stats
@@ -287,11 +299,27 @@ export default function App() {
   };
 
   // --- STATS COMPUTATIONS ---
-  const totalInDifficulty = currentFilteredNouns.length;
+  const totalInDifficulty = levelOwnNouns.length;
 
   const practicedInDifficultyCount = useMemo(() => {
-    return currentFilteredNouns.filter(n => (srsState.cards[n.word]?.totalSeen ?? 0) > 0).length;
-  }, [currentFilteredNouns, srsState]);
+    return levelOwnNouns.filter(n => (srsState.cards[n.word]?.totalSeen ?? 0) > 0).length;
+  }, [levelOwnNouns, srsState]);
+
+  // Etiquetas de la mezcla para el pie: "difícil 65% · medio 25% · fácil 10%".
+  const mixLabel = useMemo(() => {
+    return DIFFICULTIES
+      .filter(d => (levelMix[d] ?? 0) > 0)
+      .sort((a, b) => (levelMix[b] ?? 0) - (levelMix[a] ?? 0))
+      .map(d => `${d} ${Math.round((levelMix[d] ?? 0) * 100)}%`)
+      .join(' · ');
+  }, [levelMix]);
+
+  const mixExtras = useMemo(() => {
+    return DIFFICULTIES
+      .filter(d => d !== difficulty && (levelMix[d] ?? 0) > 0)
+      .sort((a, b) => (levelMix[b] ?? 0) - (levelMix[a] ?? 0))
+      .join(' + ');
+  }, [levelMix, difficulty]);
 
   const overallPracticedPercentage = useMemo(() => {
     const total = nounsData.length;
@@ -304,8 +332,8 @@ export default function App() {
   }, [currentFilteredNouns, srsState]);
 
   const masteredCount = useMemo(() => {
-    return currentFilteredNouns.filter(n => (srsState.cards[n.word]?.box ?? 0) >= 3).length;
-  }, [currentFilteredNouns, srsState]);
+    return levelOwnNouns.filter(n => (srsState.cards[n.word]?.box ?? 0) >= 3).length;
+  }, [levelOwnNouns, srsState]);
 
   // --- LIBRARY FILTERING ---
   // The dictionary only ever shows nouns the user has actually practiced, ordered
@@ -405,7 +433,7 @@ export default function App() {
         <div className="flex items-center gap-3 md:gap-5 w-full sm:w-auto justify-between sm:justify-end">
           {/* Segmented difficulty control */}
           <div className="flex border border-ink">
-            {(['fácil', 'medio', 'difícil'] as const).map((diff, i) => (
+            {DIFFICULTIES.map((diff, i) => (
               <button
                 key={diff}
                 id={`btn-diff-${diff}`}
@@ -505,7 +533,8 @@ export default function App() {
             >
               {/* Minimal card meta */}
               <span className="absolute top-3 right-3 text-[9px] font-mono uppercase tracking-widest text-ink-faint">
-                {difficulty}
+                {activeNoun.difficulty}
+                {activeNoun.difficulty !== difficulty && ' · repaso'}
               </span>
 
               {/* CARD GAMEPLAY STATE DISPLAY */}
@@ -644,7 +673,7 @@ export default function App() {
           {/* Level progress */}
           <div className="flex flex-col justify-center gap-1.5 flex-1 min-w-[150px] max-w-sm">
             <div className="flex justify-between text-[9px] font-mono uppercase tracking-widest text-ink-dim">
-              <span>Nivel · {difficulty}</span>
+              <span title={`Mezcla del nivel: ${mixLabel}`}>Nivel · {difficulty}{mixExtras && ` + ${mixExtras}`}</span>
               <span>{practicedInDifficultyCount}/{totalInDifficulty} · dom {masteredCount} · {overallPracticedPercentage}%</span>
             </div>
             <div className="h-2 w-full border border-ink bg-surface-inset relative overflow-hidden">
