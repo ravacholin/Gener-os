@@ -13,6 +13,30 @@ export interface Noun {
   example: string;
 }
 
+export type Difficulty = Noun['difficulty'];
+
+export const DIFFICULTIES: Difficulty[] = ['fácil', 'medio', 'difícil'];
+
+/**
+ * Cada nivel no juega solo con sus propias palabras: arrastra una parte de los
+ * niveles anteriores para que lo ya visto se siga repasando y el salto de nivel
+ * no se sienta abrupto. Los números son la frecuencia con la que aparece cada
+ * bolsa (suman 1); el reparto dentro de cada bolsa lo sigue decidiendo el SRS.
+ */
+export type DifficultyMix = Partial<Record<Difficulty, number>>;
+
+export const LEVEL_MIX: Record<Difficulty, DifficultyMix> = {
+  'fácil': { 'fácil': 1 },
+  'medio': { 'medio': 0.75, 'fácil': 0.25 },
+  'difícil': { 'difícil': 0.65, 'medio': 0.25, 'fácil': 0.1 },
+};
+
+/** Palabras que entran en juego en un nivel, incluidas las mezcladas de niveles previos. */
+export function poolForLevel(nouns: Noun[], level: Difficulty): Noun[] {
+  const mix = LEVEL_MIX[level];
+  return nouns.filter(noun => (mix[noun.difficulty] ?? 0) > 0);
+}
+
 export const nounsData: Noun[] = [
   // --- FÁCIL (Easy): Ending in -o (M) and -a (F) ---
   {
