@@ -143,13 +143,26 @@ export function isDue(noun: Noun, state: SrsState): boolean {
   return card.dueAt <= Date.now();
 }
 
-function weightFor(noun: Noun, state: SrsState): number {
+/**
+ * Multiplicador opcional sobre el peso de una palabra. Lo provee la inteligencia de
+ * errores para insistir con lo que el usuario confunde. Se aplica acá, o sea después
+ * del sorteo de dificultad de `pickBucket`, así que no altera las proporciones de
+ * `LEVEL_MIX`; y va acotado, para que incline la selección sin secuestrarla.
+ */
+export type BoostFn = (noun: Noun) => number;
+
+const MAX_BOOST = 3;
+
+function weightFor(noun: Noun, state: SrsState, boost?: BoostFn): number {
   const card = state.cards[noun.word];
-  return card ? BOX_WEIGHT[card.box] : UNSEEN_WEIGHT;
+  const base = card ? BOX_WEIGHT[card.box] : UNSEEN_WEIGHT;
+  if (!boost) return base;
+  const factor = boost(noun);
+  return base * Math.min(MAX_BOOST, Math.max(1, Number.isFinite(factor) ? factor : 1));
 }
 
-function weightedRandomPick(pool: Noun[], state: SrsState): Noun {
-  const weights = pool.map(n => weightFor(n, state));
+function weightedRandomPick(pool: Noun[], state: SrsState, boost?: BoostFn): Noun {
+  const weights = pool.map(n => weightFor(n, state, boost));
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (total <= 0) return pool[Math.floor(Math.random() * pool.length)];
   let target = Math.random() * total;
@@ -197,10 +210,10 @@ function pickBucket(pool: Noun[], mix: DifficultyMix): Noun[] {
  * vencidas antes de mezclar, las fáciles ya dominadas (agendadas a días vista)
  * desaparecerían del nivel avanzado y la mezcla quedaría en nada.
  */
-export function pickNextWord(pool: Noun[], state: SrsState, avoidWord?: string, mix?: DifficultyMix): Noun {
+export function pickNextWord(pool: Noun[], state: SrsState, avoidWord?: string, mix?: DifficultyMix, boost?: BoostFn): Noun {
   const candidates = pool.length > 1 ? pool.filter(n => n.word !== avoidWord) : pool;
   const bucket = mix ? pickBucket(candidates, mix) : candidates;
   const due = bucket.filter(n => isDue(n, state));
   const source = due.length > 0 ? due : bucket;
-  return weightedRandomPick(source, state);
+  return weightedRandomPick(source, state, boost);
 }

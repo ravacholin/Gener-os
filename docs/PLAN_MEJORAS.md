@@ -244,11 +244,17 @@ Tests: `getActivePool` con estado vacío devuelve solo el tier; con 70%+ dominad
 ## Qué NO hacer (guardarraíles)
 
 - **No** agregar menús, pantallas, tabs, routing ni selectores de modo. La app sigue siendo una pantalla + un overlay.
-- **No** agregar backend, cuentas, analytics ni telemetría.
+- **No** agregar backend, cuentas, analytics ni telemetría. La prohibición apunta a lo que
+  sale del dispositivo. El análisis local de los propios errores (ver
+  `docs/INTELIGENCIA_DE_ERRORES.md`) no cae acá: no hay red y sirve al que estudia, no a un
+  dashboard de producto.
 - **No** cambiar el sistema visual (monocromo brutalista, texturas en lugar de color para el género, sombras duras). Los formatos nuevos reutilizan los estilos existentes.
-- **No** tocar el shape de `Noun` ni las claves de `localStorage` existentes (la única clave nueva permitida es `genero_unlocks`).
+- **No** tocar el shape de `Noun` ni las claves de `localStorage` existentes. Claves nuevas
+  permitidas: `genero_unlocks` y `genero_errors_v1` (inteligencia de errores, ya implementada).
 - **No** agregar dependencias de runtime. Vitest es la única dependencia nueva y es de desarrollo.
-- **No** reescribir el SRS: el shape de `SrsState`/`SrsCardState` queda igual (la caja sigue midiendo dominio de la *palabra*, no del formato).
+- **No** reescribir el SRS: el shape de `SrsState`/`SrsCardState` queda igual (la caja sigue midiendo dominio de la *palabra*, no del formato). `pickNextWord` acepta un quinto parámetro
+  opcional `boost` para que la inteligencia de errores incline la selección; es aditivo y sin
+  él la selección es idéntica a la original (fijado por test).
 
 ## Verificación final (después de la Fase 4)
 

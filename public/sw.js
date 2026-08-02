@@ -1,4 +1,4 @@
-const CACHE_NAME = 'genero-de-sustantivos-v4';
+const CACHE_NAME = 'genero-de-sustantivos-v5';
 const APP_SHELL = ['/icon.svg'];
 
 self.addEventListener('install', (event) => {
