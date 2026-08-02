@@ -18,11 +18,20 @@ import {
   ListFilter,
   Mars,
   Venus,
+  Target,
+  Sparkles,
 } from 'lucide-react';
 import { nounsData, Noun, Difficulty, DIFFICULTIES, LEVEL_MIX, poolForLevel } from './nouns';
 import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, isDue, SRS_STORAGE_KEY } from './srs';
+import {
+  analyze, emptyErrorsState, ErrorPattern, ERRORS_STORAGE_KEY, loadErrorsState,
+  logAttempt, normalizeLatency, persistErrorsState, patternIncludes,
+} from './errors';
+import {
+  buildContrastQueue, isLatent, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
+} from './remediation';
 
-type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado';
+type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado' | `foco:${string}`;
 
 const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = { 'fácil': 10, 'medio': 20, 'difícil': 30 };
 
@@ -44,6 +53,60 @@ function wordSizeClass(len: number): string {
   return 'text-4xl sm:text-5xl md:text-6xl';
 }
 
+const PATTERN_STATUS_LABEL: Record<ErrorPattern['status'], string> = {
+  activo: 'Activo',
+  mejorando: 'Mejorando',
+  superado: 'Superado',
+};
+
+/**
+ * Una fila del panel de patrones. El medidor muestra la tasa de error actual y, si
+ * bajó, cuál fue la peor: el punto no es informar un porcentaje sino hacer visible
+ * que lo que costaba está cediendo.
+ */
+function PatternRow({ pattern, latent, active, onFocus }: {
+  pattern: ErrorPattern; latent: boolean; active: boolean; onFocus: () => void;
+}) {
+  const rate = Math.round(pattern.errorRate * 100);
+  const peak = Math.round(pattern.peakRate * 100);
+  const filled = Math.min(5, Math.max(0, Math.round(pattern.errorRate * 5)));
+  const solved = pattern.status === 'superado';
+
+  return (
+    <button
+      onClick={onFocus}
+      title={pattern.tip}
+      className={`w-full text-left border p-2.5 ${active ? 'border-ink bg-surface-2' : 'border-ink-faint hover:border-ink-dim'}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-black uppercase tracking-tight text-ink">{pattern.label}</span>
+        <span className={`shrink-0 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 border ${
+          solved ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
+        }`}>
+          {PATTERN_STATUS_LABEL[pattern.status]}
+        </span>
+      </div>
+
+      <p className="mt-1 text-[10px] font-mono text-ink-dim leading-snug line-clamp-2">{pattern.tip}</p>
+
+      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+        <span aria-hidden="true" className="flex gap-0.5">
+          {[0, 1, 2, 3, 4].map(i => (
+            <span key={i} className={`block w-3 h-1.5 border border-ink-faint ${i < filled ? 'bg-ink border-ink' : ''}`} />
+          ))}
+        </span>
+        <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">
+          {rate}% de error en {pattern.attempts}
+          {peak > rate && ` · antes ${peak}%`}
+        </span>
+        {latent && !solved && (
+          <span className="text-[9px] font-mono uppercase tracking-widest text-ink-faint">no sale en este nivel</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col justify-center gap-1">
@@ -61,12 +124,25 @@ export default function App() {
   const [maxStreak, setMaxStreak] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [srsState, setSrsState] = useState<SrsState>(() => loadSrsState());
+  const [errorsState, setErrorsState] = useState(() => loadErrorsState());
 
   // Active state
   const [activeWord, setActiveWord] = useState<string | null>(null);
   const [gameState, setGameState] = useState<'playing' | 'answered'>('playing');
   const [userAnswer, setUserAnswer] = useState<'masculino' | 'femenino' | null>(null);
   const [lastAnswerWasCorrect, setLastAnswerWasCorrect] = useState<boolean>(false);
+
+  // --- INTELIGENCIA DE ERRORES ---
+  // Momento en que la palabra quedó a la vista. La latencia distingue el error por
+  // automatismo (contestó antes de leer) del error por duda, que piden cosas distintas.
+  const promptShownAtRef = useRef<number>(0);
+  // Si la app se ocultó con la tarjeta a la vista, la latencia medida es basura.
+  const wasHiddenRef = useRef<boolean>(false);
+  // Tanda de contraste pendiente: se drena antes de volver a pedirle palabras al SRS.
+  const contrastQueueRef = useRef<string[]>([]);
+  const answersInSessionRef = useRef<number>(0);
+  const answersSinceContrastRef = useRef<number>(0);
+  const [resolvedPattern, setResolvedPattern] = useState<ErrorPattern | null>(null);
 
   // Library Overlay State
   const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
@@ -140,6 +216,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFilteredNouns]);
 
+  // Patrones de error del usuario. `analyze` clasifica en vez de avanzar paso a paso,
+  // así que recalcularlo en cada render es seguro: no empuja ningún patrón solo.
+  const analysis = useMemo(() => analyze(errorsState, nounsData), [errorsState]);
+  const patterns = analysis.patterns;
+  const boost = useMemo(() => patternBoost(patterns), [patterns]);
+
+  // El reloj arranca cuando la palabra queda a la vista. Si la app se ocultó en el
+  // medio, la medición se descarta: no es una respuesta lenta, es un teléfono guardado.
+  useEffect(() => {
+    promptShownAtRef.current = Date.now();
+    wasHiddenRef.current = false;
+  }, [activeWord]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) wasHiddenRef.current = true;
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
   // --- AUDIO SYNTHESIS FEEDBACK ---
   const playFeedbackSound = (type: 'correct' | 'incorrect') => {
     if (isMuted) return;
@@ -184,6 +281,31 @@ export default function App() {
     setLastAnswerWasCorrect(isCorrect);
     setGameState('answered');
 
+    // Se registra antes de `recordAnswer` para guardar la caja *previa*: fallar una
+    // palabra ya dominada es olvido, y no se trabaja igual que una confusión.
+    const boxAtAnswer = srsState.cards[activeNoun.word]?.box ?? -1;
+    const latency = wasHiddenRef.current ? null : normalizeLatency(Date.now() - promptShownAtRef.current);
+    const nextErrors = logAttempt(errorsState, {
+      w: activeNoun.word,
+      f: answer === 'femenino' ? 1 : 0,
+      k: isCorrect ? 1 : 0,
+      l: latency,
+      b: boxAtAnswer,
+      t: Date.now(),
+    });
+    const analyzed = analyze(nextErrors, nounsData);
+    const withProgress = { ...nextErrors, patterns: analyzed.progress };
+    setErrorsState(withProgress);
+    persistErrorsState(withProgress);
+
+    const justResolved = analyzed.patterns.find(
+      p => p.status === 'superado' && errorsState.patterns[p.id]?.status !== 'superado',
+    );
+    if (justResolved) setResolvedPattern(justResolved);
+
+    answersInSessionRef.current += 1;
+    answersSinceContrastRef.current += 1;
+
     const nextSrs = recordAnswer(srsState, activeNoun.word, isCorrect);
     setSrsState(nextSrs);
     persistSrsState(nextSrs);
@@ -197,11 +319,39 @@ export default function App() {
     playFeedbackSound(isCorrect ? 'correct' : 'incorrect');
   };
 
+  /**
+   * Siguiente palabra. La tanda de contraste tiene prioridad sobre el SRS: es una
+   * lista ya elegida, y además así esquiva el sorteo de dificultad de `pickBucket`,
+   * que en los niveles con mezcla dejaría al boost inerte parte de los turnos.
+   */
+  const pickFollowUp = (current: string): string => {
+    const inPool = (word: string) => currentFilteredNouns.some(n => n.word === word);
+
+    while (contrastQueueRef.current.length > 0) {
+      const word = contrastQueueRef.current.shift()!;
+      if (word !== current && inPool(word)) return word;
+    }
+
+    const target = patternToWorkOn(patterns, currentFilteredNouns);
+    if (target && shouldEnqueueContrast(answersInSessionRef.current, answersSinceContrastRef.current)) {
+      const queue = buildContrastQueue(target, currentFilteredNouns, srsState).map(n => n.word);
+      if (queue.length > 0) {
+        contrastQueueRef.current = queue;
+        answersSinceContrastRef.current = 0;
+        const word = contrastQueueRef.current.shift()!;
+        if (word !== current) return word;
+      }
+    }
+
+    return pickNextWord(currentFilteredNouns, srsState, current, levelMix, boost).word;
+  };
+
   const handleNext = () => {
     setGameState('playing');
     setUserAnswer(null);
     setXOffset(0);
-    setActiveWord(pickNextWord(currentFilteredNouns, srsState, activeNoun.word, levelMix).word);
+    setResolvedPattern(null);
+    setActiveWord(pickFollowUp(activeNoun.word));
   };
 
   // Reset current stats
@@ -209,14 +359,21 @@ export default function App() {
     if (confirm("¿Estás seguro de que deseas reiniciar tu puntuación, racha e historial?")) {
       saveScoreStats(0, 0, 0);
       setSrsState(emptySrsState());
+      setErrorsState(emptyErrorsState());
       setActiveWord(null);
       setGameState('playing');
       setUserAnswer(null);
       setXOffset(0);
+      setResolvedPattern(null);
+      setLibraryFilter('todos');
+      contrastQueueRef.current = [];
+      answersInSessionRef.current = 0;
+      answersSinceContrastRef.current = 0;
       localStorage.removeItem('genero_score');
       localStorage.removeItem('genero_streak');
       localStorage.removeItem('genero_max_streak');
       localStorage.removeItem(SRS_STORAGE_KEY);
+      localStorage.removeItem(ERRORS_STORAGE_KEY);
     }
   };
 
@@ -227,6 +384,8 @@ export default function App() {
     setGameState('playing');
     setUserAnswer(null);
     setXOffset(0);
+    // El pool cambió: la tanda armada para el anterior ya no aplica.
+    contrastQueueRef.current = [];
   };
 
   // --- KEYBOARD LISTENER ---
@@ -335,7 +494,20 @@ export default function App() {
     return levelOwnNouns.filter(n => (srsState.cards[n.word]?.box ?? 0) >= 3).length;
   }, [levelOwnNouns, srsState]);
 
+  // Micro-lección: al fallar, nombrar el patrón vale más que repetir la regla de la
+  // palabra suelta. Es la diferencia entre "mapa es masculino" y "las griegas en -ma
+  // son masculinas, ya van cinco".
+  const activeLesson = useMemo(() => {
+    if (gameState !== 'answered' || lastAnswerWasCorrect) return null;
+    return lessonFor(patterns, activeNoun);
+  }, [gameState, lastAnswerWasCorrect, patterns, activeNoun]);
+
   // --- LIBRARY FILTERING ---
+  const focusPattern = useMemo(() => {
+    if (!libraryFilter.startsWith('foco:')) return null;
+    return patterns.find(p => p.id === libraryFilter.slice('foco:'.length)) ?? null;
+  }, [libraryFilter, patterns]);
+
   // The dictionary only ever shows nouns the user has actually practiced, ordered
   // by the moment each one was first answered (oldest first).
   const practicedLibraryNouns = useMemo(() => {
@@ -353,12 +525,13 @@ export default function App() {
       if (libraryFilter === 'fácil' || libraryFilter === 'medio' || libraryFilter === 'difícil') {
         return noun.difficulty === libraryFilter && matchesSearch;
       }
+      if (focusPattern) return patternIncludes(focusPattern, noun) && matchesSearch;
       const card = srsState.cards[noun.word];
       if (libraryFilter === 'aprendiendo') return !!card && card.box <= 2 && matchesSearch;
       if (libraryFilter === 'dominado') return !!card && card.box >= 3 && matchesSearch;
       return matchesSearch;
     });
-  }, [searchQuery, libraryFilter, practicedLibraryNouns, srsState]);
+  }, [searchQuery, libraryFilter, practicedLibraryNouns, srsState, focusPattern]);
 
   // Calculate current card visual transform
   const cardStyle = useMemo(() => {
@@ -559,6 +732,17 @@ export default function App() {
                           : <><Venus className="w-4 h-4" aria-hidden="true" /> femenino</>}
                       </span>
                     </p>
+
+                    {/* Cierre del arco: el patrón que venía costando quedó superado. */}
+                    {resolvedPattern && (
+                      <span
+                        id="pattern-resolved-stamp"
+                        className="mt-2 inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-canvas px-3 py-1 text-[9px] font-mono font-black uppercase tracking-widest animate-stamp"
+                      >
+                        <Sparkles className="w-3 h-3" aria-hidden="true" />
+                        Patrón superado · {resolvedPattern.label}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -587,10 +771,17 @@ export default function App() {
           <div id="rule-lesson-box" className="w-full max-w-md h-28 md:h-auto shrink-0">
             {gameState === 'answered' ? (
               <div className="border-2 border-ink bg-surface px-3.5 pt-2.5 pb-3 md:p-4 animate-rise h-28 md:h-auto md:min-h-[88px] md:max-h-[120px] flex flex-col overflow-hidden md:overflow-y-auto">
-                <div className="flex items-center justify-between gap-2 shrink-0" title={activeNoun.rule}>
-                  <span className="flex items-center gap-1 min-w-0 text-[9px] font-mono font-black uppercase tracking-widest text-ink-dim">
-                    <Info className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{activeNoun.rule}</span>
+                {/* Cuando hay micro-lección, reemplaza al título de la regla en vez
+                    de sumarse: la caja tiene alto fijo en mobile y una fila más la
+                    desbordaría. */}
+                <div className="flex items-center justify-between gap-2 shrink-0" title={activeLesson ? activeLesson.tip : activeNoun.rule}>
+                  <span className={`flex items-center gap-1 min-w-0 text-[9px] font-mono font-black uppercase tracking-widest ${activeLesson ? 'text-ink' : 'text-ink-dim'}`}>
+                    {activeLesson
+                      ? <Target className="w-3 h-3 shrink-0" aria-hidden="true" />
+                      : <Info className="w-3 h-3 shrink-0" />}
+                    <span className="truncate">
+                      {activeLesson ? `${activeLesson.label} ×${activeLesson.errors}` : activeNoun.rule}
+                    </span>
                   </span>
                   {isRuleClamped && (
                     <button
@@ -602,8 +793,12 @@ export default function App() {
                   )}
                 </div>
                 <p ref={ruleTextRef} className="mt-1.5 text-[13px] md:text-sm text-ink/90 leading-snug md:leading-relaxed font-mono line-clamp-3 md:line-clamp-none">
-                  {activeNoun.explanation}{' '}
-                  <span className="text-ink-dim">Ej: <span className="text-ink">{activeNoun.example}</span></span>
+                  {activeLesson ? activeLesson.tip : activeNoun.explanation}{' '}
+                  <span className="text-ink-dim">Ej: <span className="text-ink">
+                    {activeLesson && activeLesson.examples.length > 0
+                      ? activeLesson.examples.join(', ')
+                      : activeNoun.example}
+                  </span></span>
                 </p>
               </div>
             ) : (
@@ -771,8 +966,34 @@ export default function App() {
                     {filterBtn.label}
                   </Chip>
                 ))}
+                {focusPattern && (
+                  <Chip active onClick={() => setLibraryFilter('todos')} title="Quitar el foco">
+                    Foco: {focusPattern.label} ✕
+                  </Chip>
+                )}
               </div>
             </div>
+
+            {/* TUS PATRONES — el diagnóstico vive acá adentro y no en una pantalla
+                nueva: el Diccionario ya es la superficie de repaso. */}
+            {patterns.length > 0 && (
+              <div id="patterns-panel" className="px-4 py-3 border-b border-ink-faint bg-canvas space-y-2 max-h-40 md:max-h-56 overflow-y-auto shrink-0">
+                <div className="flex items-center gap-1.5 text-[9px] font-mono font-black uppercase tracking-widest text-ink-dim">
+                  <Target className="w-3 h-3" aria-hidden="true" /> Tus patrones
+                </div>
+                {patterns.map(pattern => (
+                  <PatternRow
+                    key={pattern.id}
+                    pattern={pattern}
+                    latent={isLatent(pattern, currentFilteredNouns)}
+                    active={focusPattern?.id === pattern.id}
+                    onFocus={() => setLibraryFilter(
+                      focusPattern?.id === pattern.id ? 'todos' : `foco:${pattern.id}`,
+                    )}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Scrollable Word List */}
             <div className="flex-1 p-4 overflow-y-auto space-y-2.5">
