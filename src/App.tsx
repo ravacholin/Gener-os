@@ -20,9 +20,10 @@ import {
   Venus,
   Target,
   Sparkles,
+  CalendarCheck,
 } from 'lucide-react';
 import { nounsData, Noun, Difficulty, DIFFICULTIES, LEVEL_MIX, poolForLevel } from './nouns';
-import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, isDue, SRS_STORAGE_KEY } from './srs';
+import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, SRS_STORAGE_KEY } from './srs';
 import {
   analyze, emptyErrorsState, ErrorPattern, ERRORS_STORAGE_KEY, loadErrorsState,
   logAttempt, normalizeLatency, persistErrorsState, patternIncludes,
@@ -30,6 +31,7 @@ import {
 import {
   buildContrastQueue, isLatent, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
 } from './remediation';
+import { sessionStatus, formatNextReview } from './session';
 
 type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado' | `foco:${string}`;
 
@@ -144,6 +146,13 @@ export default function App() {
   const answersSinceContrastRef = useRef<number>(0);
   const [resolvedPattern, setResolvedPattern] = useState<ErrorPattern | null>(null);
 
+  // --- CIERRE DE SESIÓN Y HÁBITO ---
+  // Cuando no queda nada por repasar, la app muestra "estás al día" en vez de seguir
+  // sirviendo repaso vacío. `keepPracticing` es el opt-out del que igual quiere seguir.
+  const [keepPracticing, setKeepPracticing] = useState<boolean>(false);
+  // Aviso breve al abrir con palabras en cola. Se apaga solo a los pocos segundos.
+  const [showWelcome, setShowWelcome] = useState<boolean>(false);
+
   // Library Overlay State
   const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -222,6 +231,26 @@ export default function App() {
   const patterns = analysis.patterns;
   const boost = useMemo(() => patternBoost(patterns), [patterns]);
 
+  // Estado de la sesión: cuántas hay vencidas, si terminó lo que tocaba repasar y
+  // cuándo espera el próximo. Todo derivado del SRS, sin estado nuevo persistido.
+  const status = useMemo(() => sessionStatus(currentFilteredNouns, srsState), [currentFilteredNouns, srsState]);
+  const dueCount = status.dueCount;
+
+  // El cierre solo aplica en juego, sin tanda de contraste pendiente y si el usuario
+  // no eligió seguir practicando igual.
+  const showCaughtUp = status.caughtUp && !keepPracticing && gameState === 'playing' && contrastQueueRef.current.length === 0;
+
+  // Aviso de bienvenida: si al abrir hay palabras vencidas, mostrarlo un momento.
+  // Es el único gancho de retorno posible sin backend (nada de push). Corre una vez.
+  useEffect(() => {
+    if (dueCount > 0) {
+      setShowWelcome(true);
+      const t = setTimeout(() => setShowWelcome(false), 2800);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // El reloj arranca cuando la palabra queda a la vista. Si la app se ocultó en el
   // medio, la medición se descarta: no es una respuesta lenta, es un teléfono guardado.
   useEffect(() => {
@@ -276,6 +305,7 @@ export default function App() {
   const handleAnswer = (answer: 'masculino' | 'femenino') => {
     if (gameState === 'answered') return;
 
+    if (showWelcome) setShowWelcome(false);
     const isCorrect = activeNoun.gender === answer;
     setUserAnswer(answer);
     setLastAnswerWasCorrect(isCorrect);
@@ -354,6 +384,14 @@ export default function App() {
     setActiveWord(pickFollowUp(activeNoun.word));
   };
 
+  // Opt-out del cierre: el usuario elige seguir con repaso de relleno. Se apaga el
+  // gate y se sirve la siguiente palabra por el camino normal (SRS ponderado).
+  const handleKeepPracticing = () => {
+    setKeepPracticing(true);
+    setResolvedPattern(null);
+    setActiveWord(pickFollowUp(activeNoun.word));
+  };
+
   // Reset current stats
   const handleReset = () => {
     if (confirm("¿Estás seguro de que deseas reiniciar tu puntuación, racha e historial?")) {
@@ -366,6 +404,7 @@ export default function App() {
       setXOffset(0);
       setResolvedPattern(null);
       setLibraryFilter('todos');
+      setKeepPracticing(false);
       contrastQueueRef.current = [];
       answersInSessionRef.current = 0;
       answersSinceContrastRef.current = 0;
@@ -384,8 +423,10 @@ export default function App() {
     setGameState('playing');
     setUserAnswer(null);
     setXOffset(0);
-    // El pool cambió: la tanda armada para el anterior ya no aplica.
+    // El pool cambió: la tanda armada para el anterior ya no aplica, y el cierre se
+    // recalcula sobre el pool nuevo (el opt-out no se arrastra entre niveles).
     contrastQueueRef.current = [];
+    setKeepPracticing(false);
   };
 
   // --- KEYBOARD LISTENER ---
@@ -395,6 +436,8 @@ export default function App() {
 
       const key = e.key.toLowerCase();
       if (gameState === 'playing') {
+        // En el cierre "estás al día" no hay palabra que responder.
+        if (showCaughtUp) return;
         if (key === 'a' || e.key === 'ArrowLeft') {
           handleAnswer('masculino');
         } else if (key === 'd' || e.key === 'ArrowRight') {
@@ -410,7 +453,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, activeNoun, difficulty, isLibraryOpen, currentFilteredNouns, srsState, score, streak, maxStreak]);
+  }, [gameState, activeNoun, difficulty, isLibraryOpen, currentFilteredNouns, srsState, score, streak, maxStreak, showCaughtUp, showWelcome]);
 
   // --- SWIPE GESTURE EVENT HANDLERS ---
   const handleDragStart = (clientX: number, clientY: number) => {
@@ -485,10 +528,6 @@ export default function App() {
     const practiced = Object.keys(srsState.cards).length;
     return total > 0 ? Math.round((practiced / total) * 100) : 0;
   }, [srsState]);
-
-  const dueCount = useMemo(() => {
-    return currentFilteredNouns.filter(n => isDue(n, srsState)).length;
-  }, [currentFilteredNouns, srsState]);
 
   const masteredCount = useMemo(() => {
     return levelOwnNouns.filter(n => (srsState.cards[n.word]?.box ?? 0) >= 3).length;
@@ -650,15 +689,17 @@ export default function App() {
         <button
           id="masculine-sidebar-rail"
           onClick={() => handleAnswer('masculino')}
-          disabled={gameState === 'answered'}
+          disabled={gameState === 'answered' || showCaughtUp}
           className={`col-span-2 hidden md:flex flex-col items-center justify-center border-r-2 border-ink transition-[background-color,box-shadow] duration-75 cursor-pointer select-none group relative overflow-hidden ${
-            gameState === 'answered'
-              ? activeNoun.gender === 'masculino'
-                ? 'bg-ink text-canvas'
-                : 'pattern-stripes bg-canvas text-ink-faint opacity-30'
-              : xOffset < -30
-                ? 'bg-ink text-canvas'
-                : 'pattern-stripes bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
+            showCaughtUp
+              ? 'pattern-stripes bg-canvas text-ink-faint opacity-20 cursor-default'
+              : gameState === 'answered'
+                ? activeNoun.gender === 'masculino'
+                  ? 'bg-ink text-canvas'
+                  : 'pattern-stripes bg-canvas text-ink-faint opacity-30'
+                : xOffset < -30
+                  ? 'bg-ink text-canvas'
+                  : 'pattern-stripes bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
           <Mars className="w-16 h-16 lg:w-24 lg:h-24 select-none transition-transform duration-75 group-hover:scale-105" strokeWidth={2.5} aria-hidden="true" />
@@ -668,6 +709,63 @@ export default function App() {
         {/* CENTRAL GAMEPLAY COLUMN */}
         <div id="gameplay-center-column" className="col-span-12 md:col-span-8 flex flex-col items-center justify-center gap-3 md:gap-6 px-4 py-3 md:px-10 md:py-6 relative overflow-hidden min-h-0">
 
+          {/* Aviso de bienvenida: cuántas palabras esperan al abrir. Se apaga solo. */}
+          {showWelcome && !showCaughtUp && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-rise">
+              <span className="inline-flex items-center gap-1.5 border-2 border-ink bg-ink text-canvas px-3 py-1 text-[9px] md:text-[10px] font-mono font-black uppercase tracking-widest">
+                <Sparkles className="w-3 h-3" aria-hidden="true" />
+                {dueCount} {dueCount === 1 ? 'palabra te espera' : 'palabras te esperan'}
+              </span>
+            </div>
+          )}
+
+          {showCaughtUp ? (
+            <>
+              {/* CIERRE DE SESIÓN — "estás al día": no hay nada vencido por repasar.
+                  Reusa la caja y las animaciones de la tarjeta; no sirve repaso vacío. */}
+              <div className="w-full flex-1 min-h-0 md:max-h-[380px] flex flex-col items-center justify-center relative">
+                <div
+                  id="caught-up-card"
+                  className="w-full max-w-md h-56 md:h-full min-h-0 overflow-hidden bg-surface border-2 border-ink px-6 py-6 md:px-10 md:py-8 relative flex flex-col items-center justify-center text-center select-none shadow-brutal-md animate-rise"
+                >
+                  <CalendarCheck className="w-12 h-12 md:w-16 md:h-16 text-ink" strokeWidth={2} aria-hidden="true" />
+                  <span className="mt-3 inline-block border-2 border-ink text-ink px-5 py-1.5 md:px-6 md:py-2 text-lg md:text-2xl font-black uppercase tracking-widest animate-stamp">
+                    Al día
+                  </span>
+                  <p className="mt-3 text-xs md:text-sm font-mono uppercase tracking-wide text-ink-dim">
+                    Repasaste todo lo que tocaba.
+                  </p>
+                  {status.nextReviewAt !== null && (
+                    <p className="mt-2 text-[11px] md:text-xs font-mono uppercase tracking-widest text-ink-dim">
+                      Próximo repaso: <span className="text-ink font-bold">{formatNextReview(status.nextReviewAt)}</span>
+                    </p>
+                  )}
+                  {status.scheduledCount > 0 && (
+                    <p className="mt-0.5 text-[11px] md:text-xs font-mono uppercase tracking-widest text-ink-faint">
+                      {status.scheduledCount} {status.scheduledCount === 1 ? 'palabra agendada' : 'palabras agendadas'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Opt-out: seguir practicando igual (repaso de relleno). Ocupa el mismo
+                  slot que el botón Siguiente para no reflujar el layout. */}
+              <div className="w-full max-w-md shrink-0 h-10 flex items-center justify-center">
+                <button
+                  id="btn-keep-practicing"
+                  onClick={handleKeepPracticing}
+                  className="mx-auto bg-canvas text-ink text-[11px] font-mono font-black uppercase tracking-widest py-2.5 px-6 border-2 border-ink hover:bg-ink hover:text-canvas flex items-center gap-1.5 shadow-brutal-sm whitespace-nowrap animate-rise"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Seguir practicando igual</span>
+                </button>
+              </div>
+
+              {/* Espaciador con el alto de la caja de regla, para que el footer no salte. */}
+              <div aria-hidden="true" className="w-full max-w-md h-28 md:h-auto md:min-h-[88px] shrink-0" />
+            </>
+          ) : (
+          <>
           {/* DRAGGABLE CARD CONTAINER */}
           <div className="w-full flex-1 min-h-0 md:max-h-[380px] flex flex-col items-center justify-center relative">
 
@@ -821,6 +919,8 @@ export default function App() {
               <Venus className="w-4 h-4" aria-hidden="true" /> Femenino
             </button>
           </div>
+          </>
+          )}
 
         </div>
 
@@ -828,15 +928,17 @@ export default function App() {
         <button
           id="feminine-sidebar-rail"
           onClick={() => handleAnswer('femenino')}
-          disabled={gameState === 'answered'}
+          disabled={gameState === 'answered' || showCaughtUp}
           className={`col-span-2 hidden md:flex flex-col items-center justify-center border-l-2 border-ink transition-[background-color,box-shadow] duration-75 cursor-pointer select-none group relative overflow-hidden ${
-            gameState === 'answered'
-              ? activeNoun.gender === 'femenino'
-                ? 'bg-ink text-canvas'
-                : 'pattern-dots bg-canvas text-ink-faint opacity-30'
-              : xOffset > 30
-                ? 'bg-ink text-canvas'
-                : 'pattern-dots bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
+            showCaughtUp
+              ? 'pattern-dots bg-canvas text-ink-faint opacity-20 cursor-default'
+              : gameState === 'answered'
+                ? activeNoun.gender === 'femenino'
+                  ? 'bg-ink text-canvas'
+                  : 'pattern-dots bg-canvas text-ink-faint opacity-30'
+                : xOffset > 30
+                  ? 'bg-ink text-canvas'
+                  : 'pattern-dots bg-canvas text-ink-dim hover:text-ink hover:bg-surface'
           }`}
         >
           <Venus className="w-16 h-16 lg:w-24 lg:h-24 select-none transition-transform duration-75 group-hover:scale-105" strokeWidth={2.5} aria-hidden="true" />
