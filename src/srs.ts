@@ -136,11 +136,11 @@ export function recordAnswer(state: SrsState, word: string, correct: boolean): S
   return { ...state, round, cards: { ...state.cards, [word]: next } };
 }
 
-export function isDue(noun: Noun, state: SrsState): boolean {
+export function isDue(noun: Noun, state: SrsState, now: number = Date.now()): boolean {
   const card = state.cards[noun.word];
   if (!card) return true;
   if (card.box === 0) return card.dueRound <= state.round;
-  return card.dueAt <= Date.now();
+  return card.dueAt <= now;
 }
 
 /**
