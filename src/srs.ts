@@ -97,7 +97,12 @@ export function loadSrsState(): SrsState {
 }
 
 export function persistSrsState(state: SrsState) {
-  localStorage.setItem(SRS_STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(SRS_STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // Sin persistencia (modo privado, cuota llena) el juego sigue en memoria.
+    console.error(e);
+  }
 }
 
 export function recordAnswer(state: SrsState, word: string, correct: boolean): SrsState {

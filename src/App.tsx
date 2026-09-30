@@ -8,155 +8,48 @@ import {
   Volume2,
   VolumeX,
   RotateCcw,
-  Search,
   BookOpen,
-  X,
   ChevronRight,
   Info,
-  Check,
-  AlertTriangle,
-  ListFilter,
   Mars,
   Venus,
   Target,
   Sparkles,
   CalendarCheck,
 } from 'lucide-react';
-import { nounsData, Noun, Difficulty, DIFFICULTIES, LEVEL_MIX, poolForLevel } from './nouns';
-import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, SRS_STORAGE_KEY } from './srs';
-import {
-  analyze, emptyErrorsState, ErrorPattern, ERRORS_STORAGE_KEY, loadErrorsState,
-  logAttempt, normalizeLatency, persistErrorsState, patternIncludes,
-} from './errors';
-import {
-  buildContrastQueue, isLatent, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
-} from './remediation';
-import { sessionStatus, formatNextReview } from './session';
-
-type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado' | `foco:${string}`;
-
-const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = { 'fácil': 10, 'medio': 20, 'difícil': 30 };
-
-// --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
-
-function Chip({ active, onClick, children, title, id }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; id?: string }) {
-  const className = `px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-widest border whitespace-nowrap ${
-    active ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
-  } ${onClick ? 'hover:text-ink hover:border-ink-dim cursor-pointer' : ''}`;
-  if (onClick) {
-    return <button id={id} onClick={onClick} title={title} className={className}>{children}</button>;
-  }
-  return <span id={id} title={title} className={className}>{children}</span>;
-}
-
-function wordSizeClass(len: number): string {
-  if (len > 22) return 'text-2xl sm:text-3xl md:text-4xl';
-  if (len > 14) return 'text-3xl sm:text-4xl md:text-5xl';
-  return 'text-4xl sm:text-5xl md:text-6xl';
-}
-
-const PATTERN_STATUS_LABEL: Record<ErrorPattern['status'], string> = {
-  activo: 'Activo',
-  mejorando: 'Mejorando',
-  superado: 'Superado',
-};
-
-/**
- * Una fila del panel de patrones. El medidor muestra la tasa de error actual y, si
- * bajó, cuál fue la peor: el punto no es informar un porcentaje sino hacer visible
- * que lo que costaba está cediendo.
- */
-function PatternRow({ pattern, latent, active, onFocus }: {
-  pattern: ErrorPattern; latent: boolean; active: boolean; onFocus: () => void;
-}) {
-  const rate = Math.round(pattern.errorRate * 100);
-  const peak = Math.round(pattern.peakRate * 100);
-  const filled = Math.min(5, Math.max(0, Math.round(pattern.errorRate * 5)));
-  const solved = pattern.status === 'superado';
-
-  return (
-    <button
-      onClick={onFocus}
-      title={pattern.tip}
-      className={`w-full text-left border p-2.5 ${active ? 'border-ink bg-surface-2' : 'border-ink-faint hover:border-ink-dim'}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-black uppercase tracking-tight text-ink">{pattern.label}</span>
-        <span className={`shrink-0 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 border ${
-          solved ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
-        }`}>
-          {PATTERN_STATUS_LABEL[pattern.status]}
-        </span>
-      </div>
-
-      <p className="mt-1 text-[10px] font-mono text-ink-dim leading-snug line-clamp-2">{pattern.tip}</p>
-
-      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-        <span aria-hidden="true" className="flex gap-0.5">
-          {[0, 1, 2, 3, 4].map(i => (
-            <span key={i} className={`block w-3 h-1.5 border border-ink-faint ${i < filled ? 'bg-ink border-ink' : ''}`} />
-          ))}
-        </span>
-        <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">
-          {rate}% de error en {pattern.attempts}
-          {peak > rate && ` · antes ${peak}%`}
-        </span>
-        {latent && !solved && (
-          <span className="text-[9px] font-mono uppercase tracking-widest text-ink-faint">no sale en este nivel</span>
-        )}
-      </div>
-    </button>
-  );
-}
-
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col justify-center gap-1">
-      <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">{label}</span>
-      <div className="text-ink">{children}</div>
-    </div>
-  );
-}
+import { nounsData, Difficulty, DIFFICULTIES } from './nouns';
+import { lessonFor } from './remediation';
+import { formatNextReview } from './session';
+import { Library } from './components/Library';
+import { Stat } from './components/Stat';
+import { wordSizeClass } from './components/wordSizeClass';
+import { playFeedbackSound } from './audio';
+import { useAppHeight } from './hooks/useAppHeight';
+import { useGameEngine } from './hooks/useGameEngine';
+import { safeGetItem, safeSetItem } from './storage';
 
 export default function App() {
   // --- STATE ---
-  const [difficulty, setDifficulty] = useState<Difficulty>('fácil');
-  const [score, setScore] = useState<number>(0);
-  const [streak, setStreak] = useState<number>(0);
-  const [maxStreak, setMaxStreak] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [srsState, setSrsState] = useState<SrsState>(() => loadSrsState());
-  const [errorsState, setErrorsState] = useState(() => loadErrorsState());
-
-  // Active state
-  const [activeWord, setActiveWord] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<'playing' | 'answered'>('playing');
-  const [userAnswer, setUserAnswer] = useState<'masculino' | 'femenino' | null>(null);
-  const [lastAnswerWasCorrect, setLastAnswerWasCorrect] = useState<boolean>(false);
-
-  // --- INTELIGENCIA DE ERRORES ---
-  // Momento en que la palabra quedó a la vista. La latencia distingue el error por
-  // automatismo (contestó antes de leer) del error por duda, que piden cosas distintas.
-  const promptShownAtRef = useRef<number>(0);
-  // Si la app se ocultó con la tarjeta a la vista, la latencia medida es basura.
-  const wasHiddenRef = useRef<boolean>(false);
-  // Tanda de contraste pendiente: se drena antes de volver a pedirle palabras al SRS.
-  const contrastQueueRef = useRef<string[]>([]);
-  const answersInSessionRef = useRef<number>(0);
-  const answersSinceContrastRef = useRef<number>(0);
-  const [resolvedPattern, setResolvedPattern] = useState<ErrorPattern | null>(null);
-
-  // --- CIERRE DE SESIÓN Y HÁBITO ---
-  // Cuando no queda nada por repasar, la app muestra "estás al día" en vez de seguir
-  // sirviendo repaso vacío. `keepPracticing` es el opt-out del que igual quiere seguir.
-  const [keepPracticing, setKeepPracticing] = useState<boolean>(false);
   // Aviso breve al abrir con palabras en cola. Se apaga solo a los pocos segundos.
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
 
+  const engine = useGameEngine({
+    onAnswered: isCorrect => {
+      if (showWelcome) setShowWelcome(false);
+      playFeedbackSound(isCorrect ? 'correct' : 'incorrect', isMuted);
+    },
+  });
+  const {
+    difficulty, levelMix, levelOwnNouns, activeNoun, gameState, userAnswer, lastAnswerWasCorrect,
+    resolvedPattern, score, streak, maxStreak, srsState, patterns, status, showCaughtUp,
+    handleAnswer, handleKeepPracticing,
+  } = engine;
+  const currentFilteredNouns = engine.pool;
+  const dueCount = status.dueCount;
+
   // Library Overlay State
   const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('todos');
 
   // Swipe gesture tracking state
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -170,75 +63,9 @@ export default function App() {
   const ruleTextRef = useRef<HTMLParagraphElement>(null);
   const [isRuleClamped, setIsRuleClamped] = useState<boolean>(false);
 
-  // --- LOCAL STORAGE PERSISTENCE ---
   useEffect(() => {
-    const savedScore = localStorage.getItem('genero_score');
-    const savedStreak = localStorage.getItem('genero_streak');
-    const savedMaxStreak = localStorage.getItem('genero_max_streak');
-    const savedMute = localStorage.getItem('genero_muted');
-    const savedDiff = localStorage.getItem('genero_difficulty');
-
-    if (savedScore) setScore(parseInt(savedScore, 10));
-    if (savedStreak) setStreak(parseInt(savedStreak, 10));
-    if (savedMaxStreak) setMaxStreak(parseInt(savedMaxStreak, 10));
-    if (savedMute) setIsMuted(savedMute === 'true');
-    if (savedDiff && ['fácil', 'medio', 'difícil'].includes(savedDiff)) {
-      setDifficulty(savedDiff as Difficulty);
-    }
+    setIsMuted(safeGetItem('genero_muted') === 'true');
   }, []);
-
-  const saveScoreStats = (newScore: number, newStreak: number, newMax: number) => {
-    setScore(newScore);
-    setStreak(newStreak);
-    setMaxStreak(newMax);
-    localStorage.setItem('genero_score', newScore.toString());
-    localStorage.setItem('genero_streak', newStreak.toString());
-    localStorage.setItem('genero_max_streak', newMax.toString());
-  };
-
-  // --- FILTERED NOUNS ---
-  // El pool de juego mezcla la dificultad elegida con una parte de las anteriores
-  // (ver LEVEL_MIX); la mezcla decide con qué frecuencia sale cada bolsa.
-  const levelMix = LEVEL_MIX[difficulty];
-
-  const currentFilteredNouns = useMemo(() => {
-    return poolForLevel(nounsData, difficulty);
-  }, [difficulty]);
-
-  // Palabras propias del nivel: es lo que mide la barra de progreso, para que el
-  // porcentaje siga hablando del nivel y no de las palabras arrastradas.
-  const levelOwnNouns = useMemo(() => {
-    return nounsData.filter(noun => noun.difficulty === difficulty);
-  }, [difficulty]);
-
-  // Active word selection (SRS-driven)
-  const activeNoun = useMemo<Noun>(() => {
-    return currentFilteredNouns.find(n => n.word === activeWord) ?? currentFilteredNouns[0] ?? nounsData[0];
-  }, [currentFilteredNouns, activeWord]);
-
-  useEffect(() => {
-    if (currentFilteredNouns.length === 0) return;
-    if (!activeWord || !currentFilteredNouns.some(n => n.word === activeWord)) {
-      // Intentionally not depending on srsState: re-picking on every answer would fight handleNext's own pick.
-      setActiveWord(pickNextWord(currentFilteredNouns, srsState, undefined, levelMix).word);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFilteredNouns]);
-
-  // Patrones de error del usuario. `analyze` clasifica en vez de avanzar paso a paso,
-  // así que recalcularlo en cada render es seguro: no empuja ningún patrón solo.
-  const analysis = useMemo(() => analyze(errorsState, nounsData), [errorsState]);
-  const patterns = analysis.patterns;
-  const boost = useMemo(() => patternBoost(patterns), [patterns]);
-
-  // Estado de la sesión: cuántas hay vencidas, si terminó lo que tocaba repasar y
-  // cuándo espera el próximo. Todo derivado del SRS, sin estado nuevo persistido.
-  const status = useMemo(() => sessionStatus(currentFilteredNouns, srsState), [currentFilteredNouns, srsState]);
-  const dueCount = status.dueCount;
-
-  // El cierre solo aplica en juego, sin tanda de contraste pendiente y si el usuario
-  // no eligió seguir practicando igual.
-  const showCaughtUp = status.caughtUp && !keepPracticing && gameState === 'playing' && contrastQueueRef.current.length === 0;
 
   // Aviso de bienvenida: si al abrir hay palabras vencidas, mostrarlo un momento.
   // Es el único gancho de retorno posible sin backend (nada de push). Corre una vez.
@@ -251,182 +78,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // El reloj arranca cuando la palabra queda a la vista. Si la app se ocultó en el
-  // medio, la medición se descarta: no es una respuesta lenta, es un teléfono guardado.
-  useEffect(() => {
-    promptShownAtRef.current = Date.now();
-    wasHiddenRef.current = false;
-  }, [activeWord]);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.hidden) wasHiddenRef.current = true;
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, []);
-
-  // --- AUDIO SYNTHESIS FEEDBACK ---
-  const playFeedbackSound = (type: 'correct' | 'incorrect') => {
-    if (isMuted) return;
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      if (type === 'correct') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.08); // A5
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.25);
-      } else {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120.00, ctx.currentTime);
-        osc.frequency.setValueAtTime(90.00, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.35);
-      }
-    } catch (e) {
-      console.warn("Audio feedback context error:", e);
-    }
-  };
-
-  // --- GAME LOGIC CONTROLS ---
-  const handleAnswer = (answer: 'masculino' | 'femenino') => {
-    if (gameState === 'answered') return;
-
-    if (showWelcome) setShowWelcome(false);
-    const isCorrect = activeNoun.gender === answer;
-    setUserAnswer(answer);
-    setLastAnswerWasCorrect(isCorrect);
-    setGameState('answered');
-
-    // Se registra antes de `recordAnswer` para guardar la caja *previa*: fallar una
-    // palabra ya dominada es olvido, y no se trabaja igual que una confusión.
-    const boxAtAnswer = srsState.cards[activeNoun.word]?.box ?? -1;
-    const latency = wasHiddenRef.current ? null : normalizeLatency(Date.now() - promptShownAtRef.current);
-    const nextErrors = logAttempt(errorsState, {
-      w: activeNoun.word,
-      f: answer === 'femenino' ? 1 : 0,
-      k: isCorrect ? 1 : 0,
-      l: latency,
-      b: boxAtAnswer,
-      t: Date.now(),
-    });
-    const analyzed = analyze(nextErrors, nounsData);
-    const withProgress = { ...nextErrors, patterns: analyzed.progress };
-    setErrorsState(withProgress);
-    persistErrorsState(withProgress);
-
-    const justResolved = analyzed.patterns.find(
-      p => p.status === 'superado' && errorsState.patterns[p.id]?.status !== 'superado',
-    );
-    if (justResolved) setResolvedPattern(justResolved);
-
-    answersInSessionRef.current += 1;
-    answersSinceContrastRef.current += 1;
-
-    const nextSrs = recordAnswer(srsState, activeNoun.word, isCorrect);
-    setSrsState(nextSrs);
-    persistSrsState(nextSrs);
-
-    // Los puntos siguen a la palabra, no al nivel: una fácil mezclada en difícil vale como fácil.
-    const newScore = isCorrect ? score + POINTS_BY_DIFFICULTY[activeNoun.difficulty] : score;
-    const newStreak = isCorrect ? streak + 1 : 0;
-    const newMaxStreak = Math.max(maxStreak, newStreak);
-    saveScoreStats(newScore, newStreak, newMaxStreak);
-
-    playFeedbackSound(isCorrect ? 'correct' : 'incorrect');
-  };
-
-  /**
-   * Siguiente palabra. La tanda de contraste tiene prioridad sobre el SRS: es una
-   * lista ya elegida, y además así esquiva el sorteo de dificultad de `pickBucket`,
-   * que en los niveles con mezcla dejaría al boost inerte parte de los turnos.
-   */
-  const pickFollowUp = (current: string): string => {
-    const inPool = (word: string) => currentFilteredNouns.some(n => n.word === word);
-
-    while (contrastQueueRef.current.length > 0) {
-      const word = contrastQueueRef.current.shift()!;
-      if (word !== current && inPool(word)) return word;
-    }
-
-    const target = patternToWorkOn(patterns, currentFilteredNouns);
-    if (target && shouldEnqueueContrast(answersInSessionRef.current, answersSinceContrastRef.current)) {
-      const queue = buildContrastQueue(target, currentFilteredNouns, srsState).map(n => n.word);
-      if (queue.length > 0) {
-        contrastQueueRef.current = queue;
-        answersSinceContrastRef.current = 0;
-        const word = contrastQueueRef.current.shift()!;
-        if (word !== current) return word;
-      }
-    }
-
-    return pickNextWord(currentFilteredNouns, srsState, current, levelMix, boost).word;
-  };
-
+  // El desplazamiento del arrastre es de la tarjeta: se apaga con cada cambio de palabra o de nivel.
   const handleNext = () => {
-    setGameState('playing');
-    setUserAnswer(null);
     setXOffset(0);
-    setResolvedPattern(null);
-    setActiveWord(pickFollowUp(activeNoun.word));
+    engine.handleNext();
   };
 
-  // Opt-out del cierre: el usuario elige seguir con repaso de relleno. Se apaga el
-  // gate y se sirve la siguiente palabra por el camino normal (SRS ponderado).
-  const handleKeepPracticing = () => {
-    setKeepPracticing(true);
-    setResolvedPattern(null);
-    setActiveWord(pickFollowUp(activeNoun.word));
-  };
-
-  // Reset current stats
   const handleReset = () => {
     if (confirm("¿Estás seguro de que deseas reiniciar tu puntuación, racha e historial?")) {
-      saveScoreStats(0, 0, 0);
-      setSrsState(emptySrsState());
-      setErrorsState(emptyErrorsState());
-      setActiveWord(null);
-      setGameState('playing');
-      setUserAnswer(null);
       setXOffset(0);
-      setResolvedPattern(null);
-      setLibraryFilter('todos');
-      setKeepPracticing(false);
-      contrastQueueRef.current = [];
-      answersInSessionRef.current = 0;
-      answersSinceContrastRef.current = 0;
-      localStorage.removeItem('genero_score');
-      localStorage.removeItem('genero_streak');
-      localStorage.removeItem('genero_max_streak');
-      localStorage.removeItem(SRS_STORAGE_KEY);
-      localStorage.removeItem(ERRORS_STORAGE_KEY);
+      engine.resetProgress();
     }
   };
 
-  // Change difficulty
   const handleDifficultyChange = (diff: Difficulty) => {
-    setDifficulty(diff);
-    localStorage.setItem('genero_difficulty', diff);
-    setGameState('playing');
-    setUserAnswer(null);
     setXOffset(0);
-    // El pool cambió: la tanda armada para el anterior ya no aplica, y el cierre se
-    // recalcula sobre el pool nuevo (el opt-out no se arrastra entre niveles).
-    contrastQueueRef.current = [];
-    setKeepPracticing(false);
+    engine.changeDifficulty(diff);
   };
 
   // --- KEYBOARD LISTENER ---
@@ -497,7 +164,7 @@ export default function App() {
   const toggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
-    localStorage.setItem('genero_muted', nextMute.toString());
+    safeSetItem('genero_muted', nextMute.toString());
   };
 
   // --- STATS COMPUTATIONS ---
@@ -541,37 +208,6 @@ export default function App() {
     return lessonFor(patterns, activeNoun);
   }, [gameState, lastAnswerWasCorrect, patterns, activeNoun]);
 
-  // --- LIBRARY FILTERING ---
-  const focusPattern = useMemo(() => {
-    if (!libraryFilter.startsWith('foco:')) return null;
-    return patterns.find(p => p.id === libraryFilter.slice('foco:'.length)) ?? null;
-  }, [libraryFilter, patterns]);
-
-  // The dictionary only ever shows nouns the user has actually practiced, ordered
-  // by the moment each one was first answered (oldest first).
-  const practicedLibraryNouns = useMemo(() => {
-    return nounsData
-      .filter(noun => !!srsState.cards[noun.word])
-      .sort((a, b) => srsState.cards[a.word].firstSeenAt - srsState.cards[b.word].firstSeenAt);
-  }, [srsState]);
-
-  const filteredLibraryNouns = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return practicedLibraryNouns.filter(noun => {
-      const matchesSearch = noun.word.toLowerCase().includes(q) || noun.rule.toLowerCase().includes(q);
-
-      if (libraryFilter === 'todos') return matchesSearch;
-      if (libraryFilter === 'fácil' || libraryFilter === 'medio' || libraryFilter === 'difícil') {
-        return noun.difficulty === libraryFilter && matchesSearch;
-      }
-      if (focusPattern) return patternIncludes(focusPattern, noun) && matchesSearch;
-      const card = srsState.cards[noun.word];
-      if (libraryFilter === 'aprendiendo') return !!card && card.box <= 2 && matchesSearch;
-      if (libraryFilter === 'dominado') return !!card && card.box >= 3 && matchesSearch;
-      return matchesSearch;
-    });
-  }, [searchQuery, libraryFilter, practicedLibraryNouns, srsState, focusPattern]);
-
   // Calculate current card visual transform
   const cardStyle = useMemo(() => {
     if (gameState === 'answered') {
@@ -607,24 +243,7 @@ export default function App() {
     setIsRuleClamped(!!el && el.scrollHeight > el.clientHeight + 1);
   }, [gameState, activeNoun]);
 
-  // Ancla #app-root a la altura visible REAL del viewport. 100dvh no es fiable en
-  // algunos navegadores Android/WebView (se resuelve más alto que el área visible),
-  // lo que hacía scrollear la página y ocultaba la barra superior o la inferior.
-  useEffect(() => {
-    const setAppHeight = () => {
-      const h = window.visualViewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty('--app-height', `${h}px`);
-    };
-    setAppHeight();
-    window.addEventListener('resize', setAppHeight);
-    window.addEventListener('orientationchange', setAppHeight);
-    window.visualViewport?.addEventListener('resize', setAppHeight);
-    return () => {
-      window.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('orientationchange', setAppHeight);
-      window.visualViewport?.removeEventListener('resize', setAppHeight);
-    };
-  }, []);
+  useAppHeight();
 
   return (
     <div
@@ -1003,187 +622,13 @@ export default function App() {
         </div>
       </footer>
 
-      {/* --- NOUN DICTIONARY / LIBRARY OVERLAY PANEL --- */}
       {isLibraryOpen && (
-        <div id="library-overlay" className="absolute inset-0 bg-canvas/90 flex justify-end z-50 animate-fade-in">
-
-          <div className="w-full max-w-2xl bg-surface border-l-2 border-ink h-full flex flex-col justify-between relative">
-
-            {/* Library Header */}
-            <div className="p-6 border-b-2 border-ink bg-canvas flex justify-between items-center gap-4">
-              <div className="flex items-center gap-3">
-                <BookOpen className="w-5 h-5 text-ink" />
-                <div>
-                  <h3 className="text-lg md:text-xl font-black uppercase tracking-tighter">Diccionario</h3>
-                  <p className="text-[9px] font-mono opacity-50 uppercase tracking-widest">{practicedLibraryNouns.length} palabras practicadas · orden de aparición</p>
-                </div>
-              </div>
-
-              <button
-                id="btn-close-library"
-                onClick={() => setIsLibraryOpen(false)}
-                className="p-1.5 border border-ink hover:bg-ink hover:text-canvas"
-                title="Cerrar diccionario"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Filters Bar */}
-            <div className="p-4 border-b border-ink-faint bg-surface-2 space-y-3">
-              <div className="relative">
-                <Search className="w-4 h-4 text-ink-dim absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Buscar palabra o regla..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-surface-inset border border-ink py-2 pl-9 pr-4 text-sm font-mono text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-ink-dim hover:text-ink">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-[9px] font-mono text-ink-faint uppercase tracking-wide mr-1 flex items-center gap-1">
-                  <ListFilter className="w-3 h-3" /> Filtrar:
-                </span>
-
-                {[
-                  { id: 'todos', label: 'Todos' },
-                  { id: 'fácil', label: 'Fácil' },
-                  { id: 'medio', label: 'Medio' },
-                  { id: 'difícil', label: 'Difícil' },
-                  { id: 'aprendiendo', label: 'Aprendiendo' },
-                  { id: 'dominado', label: 'Dominado' },
-                ].map(filterBtn => (
-                  <Chip
-                    key={filterBtn.id}
-                    active={libraryFilter === filterBtn.id}
-                    onClick={() => setLibraryFilter(filterBtn.id as LibraryFilter)}
-                  >
-                    {filterBtn.label}
-                  </Chip>
-                ))}
-                {focusPattern && (
-                  <Chip active onClick={() => setLibraryFilter('todos')} title="Quitar el foco">
-                    Foco: {focusPattern.label} ✕
-                  </Chip>
-                )}
-              </div>
-            </div>
-
-            {/* TUS PATRONES — el diagnóstico vive acá adentro y no en una pantalla
-                nueva: el Diccionario ya es la superficie de repaso. */}
-            {patterns.length > 0 && (
-              <div id="patterns-panel" className="px-4 py-3 border-b border-ink-faint bg-canvas space-y-2 max-h-40 md:max-h-56 overflow-y-auto shrink-0">
-                <div className="flex items-center gap-1.5 text-[9px] font-mono font-black uppercase tracking-widest text-ink-dim">
-                  <Target className="w-3 h-3" aria-hidden="true" /> Tus patrones
-                </div>
-                {patterns.map(pattern => (
-                  <PatternRow
-                    key={pattern.id}
-                    pattern={pattern}
-                    latent={isLatent(pattern, currentFilteredNouns)}
-                    active={focusPattern?.id === pattern.id}
-                    onFocus={() => setLibraryFilter(
-                      focusPattern?.id === pattern.id ? 'todos' : `foco:${pattern.id}`,
-                    )}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Scrollable Word List */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-2.5">
-              {filteredLibraryNouns.length === 0 ? (
-                <div className="text-center py-12 text-ink-dim">
-                  <AlertTriangle className="w-7 h-7 mx-auto mb-3 text-ink" />
-                  {practicedLibraryNouns.length === 0 ? (
-                    <>
-                      <p className="text-sm font-mono">Todavía no practicaste ningún sustantivo.</p>
-                      <p className="text-xs text-ink-faint">Los que respondas van a aparecer acá.</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm font-mono">No se encontraron sustantivos.</p>
-                      <p className="text-xs text-ink-faint">Probá cambiando tu búsqueda o filtros.</p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                filteredLibraryNouns.map((noun, idx) => {
-                  const card = srsState.cards[noun.word];
-                  const status: 'unseen' | 'aprendiendo' | 'dominado' = !card ? 'unseen' : card.box >= 3 ? 'dominado' : 'aprendiendo';
-                  return (
-                    <div
-                      key={idx}
-                      className={`border p-4 bg-surface relative ${
-                        status === 'dominado'
-                          ? 'border-ink hover:bg-surface-2'
-                          : status === 'aprendiendo'
-                            ? 'border-ink-faint hover:bg-surface-2'
-                            : 'border-ink-faint hover:border-ink-dim'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-3 mb-2.5">
-                        <span className="text-base md:text-lg font-black uppercase tracking-tight text-ink inline-flex items-center gap-1.5">
-                          {noun.gender === 'masculino'
-                            ? <Mars className="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />
-                            : <Venus className="w-4 h-4 md:w-5 md:h-5 shrink-0" aria-hidden="true" />}
-                          <span className="underline decoration-ink decoration-2 underline-offset-2">{noun.word}</span>
-                        </span>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Chip active>{noun.difficulty}</Chip>
-                          {status === 'dominado' && (
-                            <span className="text-ink border border-ink p-0.5" title="Dominado">
-                              <Check className="w-3 h-3" />
-                            </span>
-                          )}
-                          {status === 'aprendiendo' && card && (
-                            <span className="text-[9px] font-mono uppercase text-ink-dim px-1.5 py-0.5 border border-ink-faint" title="Aprendiendo">
-                              Caja {card.box}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="border-t border-ink-faint pt-2.5">
-                        <p className="text-[10px] font-mono text-ink-dim uppercase tracking-wide mb-1 flex items-center gap-1 font-bold">
-                          <Info className="w-3 h-3" />
-                          {noun.rule}
-                        </p>
-                        <p className="text-xs text-ink/80 font-mono leading-relaxed">
-                          {noun.explanation}{' '}
-                          <span className="text-ink-dim">Ej: <span className="text-ink">{noun.example}</span></span>
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Library Footer summary */}
-            <div className="p-4 border-t-2 border-ink bg-canvas flex items-center justify-between text-[10px] font-mono uppercase tracking-widest">
-              <span className="text-ink-dim">{filteredLibraryNouns.length} / {practicedLibraryNouns.length} palabras</span>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setLibraryFilter('todos');
-                }}
-                className="text-ink hover:underline font-bold"
-              >
-                Limpiar filtros
-              </button>
-            </div>
-
-          </div>
-        </div>
+        <Library
+          srsState={srsState}
+          patterns={patterns}
+          poolNouns={currentFilteredNouns}
+          onClose={() => setIsLibraryOpen(false)}
+        />
       )}
 
     </div>
