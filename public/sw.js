@@ -1,5 +1,5 @@
-const CACHE_NAME = 'genero-de-sustantivos-v6';
-const APP_SHELL = ['/icon.svg'];
+const CACHE_NAME = 'genero-de-sustantivos-v7';
+const APP_SHELL = ['/', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -26,10 +26,18 @@ self.addEventListener('fetch', (event) => {
 
   // Navigation requests (the HTML shell) always go to the network first so a
   // new deploy's hashed asset references are never served alongside stale
-  // cached assets. Fall back to cache only when fully offline.
+  // cached assets. The last good shell is kept so the app still opens offline.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request)),
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/', clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match('/')),
     );
     return;
   }

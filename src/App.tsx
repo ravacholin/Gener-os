@@ -32,6 +32,7 @@ import {
   buildContrastQueue, isLatent, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
 } from './remediation';
 import { sessionStatus, formatNextReview } from './session';
+import { safeGetItem, safeSetItem, safeRemoveItem, parseStoredInt } from './storage';
 
 type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado' | `foco:${string}`;
 
@@ -118,6 +119,21 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+// Un único AudioContext para toda la sesión: crear uno por respuesta agota el cupo
+// del navegador (~6 en Chrome) y el sonido se corta tras unas pocas respuestas.
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (!sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    sharedAudioCtx = new AudioCtx();
+  }
+  // Los navegadores lo dejan suspendido hasta un gesto del usuario; responder es uno.
+  if (sharedAudioCtx.state === 'suspended') void sharedAudioCtx.resume();
+  return sharedAudioCtx;
+}
+
 export default function App() {
   // --- STATE ---
   const [difficulty, setDifficulty] = useState<Difficulty>('fácil');
@@ -172,15 +188,12 @@ export default function App() {
 
   // --- LOCAL STORAGE PERSISTENCE ---
   useEffect(() => {
-    const savedScore = localStorage.getItem('genero_score');
-    const savedStreak = localStorage.getItem('genero_streak');
-    const savedMaxStreak = localStorage.getItem('genero_max_streak');
-    const savedMute = localStorage.getItem('genero_muted');
-    const savedDiff = localStorage.getItem('genero_difficulty');
+    const savedMute = safeGetItem('genero_muted');
+    const savedDiff = safeGetItem('genero_difficulty');
 
-    if (savedScore) setScore(parseInt(savedScore, 10));
-    if (savedStreak) setStreak(parseInt(savedStreak, 10));
-    if (savedMaxStreak) setMaxStreak(parseInt(savedMaxStreak, 10));
+    setScore(parseStoredInt(safeGetItem('genero_score')));
+    setStreak(parseStoredInt(safeGetItem('genero_streak')));
+    setMaxStreak(parseStoredInt(safeGetItem('genero_max_streak')));
     if (savedMute) setIsMuted(savedMute === 'true');
     if (savedDiff && ['fácil', 'medio', 'difícil'].includes(savedDiff)) {
       setDifficulty(savedDiff as Difficulty);
@@ -191,9 +204,9 @@ export default function App() {
     setScore(newScore);
     setStreak(newStreak);
     setMaxStreak(newMax);
-    localStorage.setItem('genero_score', newScore.toString());
-    localStorage.setItem('genero_streak', newStreak.toString());
-    localStorage.setItem('genero_max_streak', newMax.toString());
+    safeSetItem('genero_score', newScore.toString());
+    safeSetItem('genero_streak', newStreak.toString());
+    safeSetItem('genero_max_streak', newMax.toString());
   };
 
   // --- FILTERED NOUNS ---
@@ -270,9 +283,8 @@ export default function App() {
   const playFeedbackSound = (type: 'correct' | 'incorrect') => {
     if (isMuted) return;
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
+      const ctx = getAudioContext();
+      if (!ctx) return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -408,18 +420,18 @@ export default function App() {
       contrastQueueRef.current = [];
       answersInSessionRef.current = 0;
       answersSinceContrastRef.current = 0;
-      localStorage.removeItem('genero_score');
-      localStorage.removeItem('genero_streak');
-      localStorage.removeItem('genero_max_streak');
-      localStorage.removeItem(SRS_STORAGE_KEY);
-      localStorage.removeItem(ERRORS_STORAGE_KEY);
+      safeRemoveItem('genero_score');
+      safeRemoveItem('genero_streak');
+      safeRemoveItem('genero_max_streak');
+      safeRemoveItem(SRS_STORAGE_KEY);
+      safeRemoveItem(ERRORS_STORAGE_KEY);
     }
   };
 
   // Change difficulty
   const handleDifficultyChange = (diff: Difficulty) => {
     setDifficulty(diff);
-    localStorage.setItem('genero_difficulty', diff);
+    safeSetItem('genero_difficulty', diff);
     setGameState('playing');
     setUserAnswer(null);
     setXOffset(0);
@@ -497,7 +509,7 @@ export default function App() {
   const toggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
-    localStorage.setItem('genero_muted', nextMute.toString());
+    safeSetItem('genero_muted', nextMute.toString());
   };
 
   // --- STATS COMPUTATIONS ---
