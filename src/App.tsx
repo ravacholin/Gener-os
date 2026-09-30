@@ -32,107 +32,17 @@ import {
   buildContrastQueue, isLatent, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
 } from './remediation';
 import { sessionStatus, formatNextReview } from './session';
+import { Chip } from './components/Chip';
+import { PatternRow } from './components/PatternRow';
+import { Stat } from './components/Stat';
+import { wordSizeClass } from './components/wordSizeClass';
+import { playFeedbackSound } from './audio';
+import { useAppHeight } from './hooks/useAppHeight';
 import { safeGetItem, safeSetItem, safeRemoveItem, parseStoredInt } from './storage';
 
 type LibraryFilter = 'todos' | Difficulty | 'aprendiendo' | 'dominado' | `foco:${string}`;
 
 const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = { 'fácil': 10, 'medio': 20, 'difícil': 30 };
-
-// --- Small reusable pieces (kept in this file by design — the app has no components/ folder) ---
-
-function Chip({ active, onClick, children, title, id }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; id?: string }) {
-  const className = `px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-widest border whitespace-nowrap ${
-    active ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
-  } ${onClick ? 'hover:text-ink hover:border-ink-dim cursor-pointer' : ''}`;
-  if (onClick) {
-    return <button id={id} onClick={onClick} title={title} className={className}>{children}</button>;
-  }
-  return <span id={id} title={title} className={className}>{children}</span>;
-}
-
-function wordSizeClass(len: number): string {
-  if (len > 22) return 'text-2xl sm:text-3xl md:text-4xl';
-  if (len > 14) return 'text-3xl sm:text-4xl md:text-5xl';
-  return 'text-4xl sm:text-5xl md:text-6xl';
-}
-
-const PATTERN_STATUS_LABEL: Record<ErrorPattern['status'], string> = {
-  activo: 'Activo',
-  mejorando: 'Mejorando',
-  superado: 'Superado',
-};
-
-/**
- * Una fila del panel de patrones. El medidor muestra la tasa de error actual y, si
- * bajó, cuál fue la peor: el punto no es informar un porcentaje sino hacer visible
- * que lo que costaba está cediendo.
- */
-function PatternRow({ pattern, latent, active, onFocus }: {
-  pattern: ErrorPattern; latent: boolean; active: boolean; onFocus: () => void;
-}) {
-  const rate = Math.round(pattern.errorRate * 100);
-  const peak = Math.round(pattern.peakRate * 100);
-  const filled = Math.min(5, Math.max(0, Math.round(pattern.errorRate * 5)));
-  const solved = pattern.status === 'superado';
-
-  return (
-    <button
-      onClick={onFocus}
-      title={pattern.tip}
-      className={`w-full text-left border p-2.5 ${active ? 'border-ink bg-surface-2' : 'border-ink-faint hover:border-ink-dim'}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-black uppercase tracking-tight text-ink">{pattern.label}</span>
-        <span className={`shrink-0 text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 border ${
-          solved ? 'bg-ink text-canvas border-ink' : 'border-ink-faint text-ink-dim'
-        }`}>
-          {PATTERN_STATUS_LABEL[pattern.status]}
-        </span>
-      </div>
-
-      <p className="mt-1 text-[10px] font-mono text-ink-dim leading-snug line-clamp-2">{pattern.tip}</p>
-
-      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-        <span aria-hidden="true" className="flex gap-0.5">
-          {[0, 1, 2, 3, 4].map(i => (
-            <span key={i} className={`block w-3 h-1.5 border border-ink-faint ${i < filled ? 'bg-ink border-ink' : ''}`} />
-          ))}
-        </span>
-        <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">
-          {rate}% de error en {pattern.attempts}
-          {peak > rate && ` · antes ${peak}%`}
-        </span>
-        {latent && !solved && (
-          <span className="text-[9px] font-mono uppercase tracking-widest text-ink-faint">no sale en este nivel</span>
-        )}
-      </div>
-    </button>
-  );
-}
-
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col justify-center gap-1">
-      <span className="text-[9px] font-mono uppercase tracking-widest text-ink-dim">{label}</span>
-      <div className="text-ink">{children}</div>
-    </div>
-  );
-}
-
-// Un único AudioContext para toda la sesión: crear uno por respuesta agota el cupo
-// del navegador (~6 en Chrome) y el sonido se corta tras unas pocas respuestas.
-let sharedAudioCtx: AudioContext | null = null;
-
-function getAudioContext(): AudioContext | null {
-  if (!sharedAudioCtx) {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return null;
-    sharedAudioCtx = new AudioCtx();
-  }
-  // Los navegadores lo dejan suspendido hasta un gesto del usuario; responder es uno.
-  if (sharedAudioCtx.state === 'suspended') void sharedAudioCtx.resume();
-  return sharedAudioCtx;
-}
 
 export default function App() {
   // --- STATE ---
@@ -279,40 +189,6 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
-  // --- AUDIO SYNTHESIS FEEDBACK ---
-  const playFeedbackSound = (type: 'correct' | 'incorrect') => {
-    if (isMuted) return;
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      if (type === 'correct') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.08); // A5
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.25);
-      } else {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120.00, ctx.currentTime);
-        osc.frequency.setValueAtTime(90.00, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.35);
-      }
-    } catch (e) {
-      console.warn("Audio feedback context error:", e);
-    }
-  };
-
   // --- GAME LOGIC CONTROLS ---
   const handleAnswer = (answer: 'masculino' | 'femenino') => {
     if (gameState === 'answered') return;
@@ -358,7 +234,7 @@ export default function App() {
     const newMaxStreak = Math.max(maxStreak, newStreak);
     saveScoreStats(newScore, newStreak, newMaxStreak);
 
-    playFeedbackSound(isCorrect ? 'correct' : 'incorrect');
+    playFeedbackSound(isCorrect ? 'correct' : 'incorrect', isMuted);
   };
 
   /**
@@ -619,24 +495,7 @@ export default function App() {
     setIsRuleClamped(!!el && el.scrollHeight > el.clientHeight + 1);
   }, [gameState, activeNoun]);
 
-  // Ancla #app-root a la altura visible REAL del viewport. 100dvh no es fiable en
-  // algunos navegadores Android/WebView (se resuelve más alto que el área visible),
-  // lo que hacía scrollear la página y ocultaba la barra superior o la inferior.
-  useEffect(() => {
-    const setAppHeight = () => {
-      const h = window.visualViewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty('--app-height', `${h}px`);
-    };
-    setAppHeight();
-    window.addEventListener('resize', setAppHeight);
-    window.addEventListener('orientationchange', setAppHeight);
-    window.visualViewport?.addEventListener('resize', setAppHeight);
-    return () => {
-      window.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('orientationchange', setAppHeight);
-      window.visualViewport?.removeEventListener('resize', setAppHeight);
-    };
-  }, []);
+  useAppHeight();
 
   return (
     <div
