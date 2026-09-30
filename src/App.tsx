@@ -17,59 +17,36 @@ import {
   Sparkles,
   CalendarCheck,
 } from 'lucide-react';
-import { nounsData, Noun, Difficulty, DIFFICULTIES, LEVEL_MIX, poolForLevel } from './nouns';
-import { SrsState, loadSrsState, persistSrsState, recordAnswer, pickNextWord, emptySrsState, SRS_STORAGE_KEY } from './srs';
-import {
-  analyze, emptyErrorsState, ErrorPattern, ERRORS_STORAGE_KEY, loadErrorsState,
-  logAttempt, normalizeLatency, persistErrorsState,
-} from './errors';
-import {
-  buildContrastQueue, lessonFor, patternBoost, patternToWorkOn, shouldEnqueueContrast,
-} from './remediation';
-import { sessionStatus, formatNextReview } from './session';
+import { nounsData, Difficulty, DIFFICULTIES } from './nouns';
+import { lessonFor } from './remediation';
+import { formatNextReview } from './session';
 import { Library } from './components/Library';
 import { Stat } from './components/Stat';
 import { wordSizeClass } from './components/wordSizeClass';
 import { playFeedbackSound } from './audio';
 import { useAppHeight } from './hooks/useAppHeight';
-import { safeGetItem, safeSetItem, safeRemoveItem, parseStoredInt } from './storage';
-
-const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = { 'fácil': 10, 'medio': 20, 'difícil': 30 };
+import { useGameEngine } from './hooks/useGameEngine';
+import { safeGetItem, safeSetItem } from './storage';
 
 export default function App() {
   // --- STATE ---
-  const [difficulty, setDifficulty] = useState<Difficulty>('fácil');
-  const [score, setScore] = useState<number>(0);
-  const [streak, setStreak] = useState<number>(0);
-  const [maxStreak, setMaxStreak] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [srsState, setSrsState] = useState<SrsState>(() => loadSrsState());
-  const [errorsState, setErrorsState] = useState(() => loadErrorsState());
-
-  // Active state
-  const [activeWord, setActiveWord] = useState<string | null>(null);
-  const [gameState, setGameState] = useState<'playing' | 'answered'>('playing');
-  const [userAnswer, setUserAnswer] = useState<'masculino' | 'femenino' | null>(null);
-  const [lastAnswerWasCorrect, setLastAnswerWasCorrect] = useState<boolean>(false);
-
-  // --- INTELIGENCIA DE ERRORES ---
-  // Momento en que la palabra quedó a la vista. La latencia distingue el error por
-  // automatismo (contestó antes de leer) del error por duda, que piden cosas distintas.
-  const promptShownAtRef = useRef<number>(0);
-  // Si la app se ocultó con la tarjeta a la vista, la latencia medida es basura.
-  const wasHiddenRef = useRef<boolean>(false);
-  // Tanda de contraste pendiente: se drena antes de volver a pedirle palabras al SRS.
-  const contrastQueueRef = useRef<string[]>([]);
-  const answersInSessionRef = useRef<number>(0);
-  const answersSinceContrastRef = useRef<number>(0);
-  const [resolvedPattern, setResolvedPattern] = useState<ErrorPattern | null>(null);
-
-  // --- CIERRE DE SESIÓN Y HÁBITO ---
-  // Cuando no queda nada por repasar, la app muestra "estás al día" en vez de seguir
-  // sirviendo repaso vacío. `keepPracticing` es el opt-out del que igual quiere seguir.
-  const [keepPracticing, setKeepPracticing] = useState<boolean>(false);
   // Aviso breve al abrir con palabras en cola. Se apaga solo a los pocos segundos.
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
+
+  const engine = useGameEngine({
+    onAnswered: isCorrect => {
+      if (showWelcome) setShowWelcome(false);
+      playFeedbackSound(isCorrect ? 'correct' : 'incorrect', isMuted);
+    },
+  });
+  const {
+    difficulty, levelMix, levelOwnNouns, activeNoun, gameState, userAnswer, lastAnswerWasCorrect,
+    resolvedPattern, score, streak, maxStreak, srsState, patterns, status, showCaughtUp,
+    handleAnswer, handleKeepPracticing,
+  } = engine;
+  const currentFilteredNouns = engine.pool;
+  const dueCount = status.dueCount;
 
   // Library Overlay State
   const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
@@ -86,72 +63,9 @@ export default function App() {
   const ruleTextRef = useRef<HTMLParagraphElement>(null);
   const [isRuleClamped, setIsRuleClamped] = useState<boolean>(false);
 
-  // --- LOCAL STORAGE PERSISTENCE ---
   useEffect(() => {
-    const savedMute = safeGetItem('genero_muted');
-    const savedDiff = safeGetItem('genero_difficulty');
-
-    setScore(parseStoredInt(safeGetItem('genero_score')));
-    setStreak(parseStoredInt(safeGetItem('genero_streak')));
-    setMaxStreak(parseStoredInt(safeGetItem('genero_max_streak')));
-    if (savedMute) setIsMuted(savedMute === 'true');
-    if (savedDiff && ['fácil', 'medio', 'difícil'].includes(savedDiff)) {
-      setDifficulty(savedDiff as Difficulty);
-    }
+    setIsMuted(safeGetItem('genero_muted') === 'true');
   }, []);
-
-  const saveScoreStats = (newScore: number, newStreak: number, newMax: number) => {
-    setScore(newScore);
-    setStreak(newStreak);
-    setMaxStreak(newMax);
-    safeSetItem('genero_score', newScore.toString());
-    safeSetItem('genero_streak', newStreak.toString());
-    safeSetItem('genero_max_streak', newMax.toString());
-  };
-
-  // --- FILTERED NOUNS ---
-  // El pool de juego mezcla la dificultad elegida con una parte de las anteriores
-  // (ver LEVEL_MIX); la mezcla decide con qué frecuencia sale cada bolsa.
-  const levelMix = LEVEL_MIX[difficulty];
-
-  const currentFilteredNouns = useMemo(() => {
-    return poolForLevel(nounsData, difficulty);
-  }, [difficulty]);
-
-  // Palabras propias del nivel: es lo que mide la barra de progreso, para que el
-  // porcentaje siga hablando del nivel y no de las palabras arrastradas.
-  const levelOwnNouns = useMemo(() => {
-    return nounsData.filter(noun => noun.difficulty === difficulty);
-  }, [difficulty]);
-
-  // Active word selection (SRS-driven)
-  const activeNoun = useMemo<Noun>(() => {
-    return currentFilteredNouns.find(n => n.word === activeWord) ?? currentFilteredNouns[0] ?? nounsData[0];
-  }, [currentFilteredNouns, activeWord]);
-
-  useEffect(() => {
-    if (currentFilteredNouns.length === 0) return;
-    if (!activeWord || !currentFilteredNouns.some(n => n.word === activeWord)) {
-      // Intentionally not depending on srsState: re-picking on every answer would fight handleNext's own pick.
-      setActiveWord(pickNextWord(currentFilteredNouns, srsState, undefined, levelMix).word);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFilteredNouns]);
-
-  // Patrones de error del usuario. `analyze` clasifica en vez de avanzar paso a paso,
-  // así que recalcularlo en cada render es seguro: no empuja ningún patrón solo.
-  const analysis = useMemo(() => analyze(errorsState, nounsData), [errorsState]);
-  const patterns = analysis.patterns;
-  const boost = useMemo(() => patternBoost(patterns), [patterns]);
-
-  // Estado de la sesión: cuántas hay vencidas, si terminó lo que tocaba repasar y
-  // cuándo espera el próximo. Todo derivado del SRS, sin estado nuevo persistido.
-  const status = useMemo(() => sessionStatus(currentFilteredNouns, srsState), [currentFilteredNouns, srsState]);
-  const dueCount = status.dueCount;
-
-  // El cierre solo aplica en juego, sin tanda de contraste pendiente y si el usuario
-  // no eligió seguir practicando igual.
-  const showCaughtUp = status.caughtUp && !keepPracticing && gameState === 'playing' && contrastQueueRef.current.length === 0;
 
   // Aviso de bienvenida: si al abrir hay palabras vencidas, mostrarlo un momento.
   // Es el único gancho de retorno posible sin backend (nada de push). Corre una vez.
@@ -164,146 +78,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // El reloj arranca cuando la palabra queda a la vista. Si la app se ocultó en el
-  // medio, la medición se descarta: no es una respuesta lenta, es un teléfono guardado.
-  useEffect(() => {
-    promptShownAtRef.current = Date.now();
-    wasHiddenRef.current = false;
-  }, [activeWord]);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.hidden) wasHiddenRef.current = true;
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, []);
-
-  // --- GAME LOGIC CONTROLS ---
-  const handleAnswer = (answer: 'masculino' | 'femenino') => {
-    if (gameState === 'answered') return;
-
-    if (showWelcome) setShowWelcome(false);
-    const isCorrect = activeNoun.gender === answer;
-    setUserAnswer(answer);
-    setLastAnswerWasCorrect(isCorrect);
-    setGameState('answered');
-
-    // Se registra antes de `recordAnswer` para guardar la caja *previa*: fallar una
-    // palabra ya dominada es olvido, y no se trabaja igual que una confusión.
-    const boxAtAnswer = srsState.cards[activeNoun.word]?.box ?? -1;
-    const latency = wasHiddenRef.current ? null : normalizeLatency(Date.now() - promptShownAtRef.current);
-    const nextErrors = logAttempt(errorsState, {
-      w: activeNoun.word,
-      f: answer === 'femenino' ? 1 : 0,
-      k: isCorrect ? 1 : 0,
-      l: latency,
-      b: boxAtAnswer,
-      t: Date.now(),
-    });
-    const analyzed = analyze(nextErrors, nounsData);
-    const withProgress = { ...nextErrors, patterns: analyzed.progress };
-    setErrorsState(withProgress);
-    persistErrorsState(withProgress);
-
-    const justResolved = analyzed.patterns.find(
-      p => p.status === 'superado' && errorsState.patterns[p.id]?.status !== 'superado',
-    );
-    if (justResolved) setResolvedPattern(justResolved);
-
-    answersInSessionRef.current += 1;
-    answersSinceContrastRef.current += 1;
-
-    const nextSrs = recordAnswer(srsState, activeNoun.word, isCorrect);
-    setSrsState(nextSrs);
-    persistSrsState(nextSrs);
-
-    // Los puntos siguen a la palabra, no al nivel: una fácil mezclada en difícil vale como fácil.
-    const newScore = isCorrect ? score + POINTS_BY_DIFFICULTY[activeNoun.difficulty] : score;
-    const newStreak = isCorrect ? streak + 1 : 0;
-    const newMaxStreak = Math.max(maxStreak, newStreak);
-    saveScoreStats(newScore, newStreak, newMaxStreak);
-
-    playFeedbackSound(isCorrect ? 'correct' : 'incorrect', isMuted);
-  };
-
-  /**
-   * Siguiente palabra. La tanda de contraste tiene prioridad sobre el SRS: es una
-   * lista ya elegida, y además así esquiva el sorteo de dificultad de `pickBucket`,
-   * que en los niveles con mezcla dejaría al boost inerte parte de los turnos.
-   */
-  const pickFollowUp = (current: string): string => {
-    const inPool = (word: string) => currentFilteredNouns.some(n => n.word === word);
-
-    while (contrastQueueRef.current.length > 0) {
-      const word = contrastQueueRef.current.shift()!;
-      if (word !== current && inPool(word)) return word;
-    }
-
-    const target = patternToWorkOn(patterns, currentFilteredNouns);
-    if (target && shouldEnqueueContrast(answersInSessionRef.current, answersSinceContrastRef.current)) {
-      const queue = buildContrastQueue(target, currentFilteredNouns, srsState).map(n => n.word);
-      if (queue.length > 0) {
-        contrastQueueRef.current = queue;
-        answersSinceContrastRef.current = 0;
-        const word = contrastQueueRef.current.shift()!;
-        if (word !== current) return word;
-      }
-    }
-
-    return pickNextWord(currentFilteredNouns, srsState, current, levelMix, boost).word;
-  };
-
+  // El desplazamiento del arrastre es de la tarjeta: se apaga con cada cambio de palabra o de nivel.
   const handleNext = () => {
-    setGameState('playing');
-    setUserAnswer(null);
     setXOffset(0);
-    setResolvedPattern(null);
-    setActiveWord(pickFollowUp(activeNoun.word));
+    engine.handleNext();
   };
 
-  // Opt-out del cierre: el usuario elige seguir con repaso de relleno. Se apaga el
-  // gate y se sirve la siguiente palabra por el camino normal (SRS ponderado).
-  const handleKeepPracticing = () => {
-    setKeepPracticing(true);
-    setResolvedPattern(null);
-    setActiveWord(pickFollowUp(activeNoun.word));
-  };
-
-  // Reset current stats
   const handleReset = () => {
     if (confirm("¿Estás seguro de que deseas reiniciar tu puntuación, racha e historial?")) {
-      saveScoreStats(0, 0, 0);
-      setSrsState(emptySrsState());
-      setErrorsState(emptyErrorsState());
-      setActiveWord(null);
-      setGameState('playing');
-      setUserAnswer(null);
       setXOffset(0);
-      setResolvedPattern(null);
-      setKeepPracticing(false);
-      contrastQueueRef.current = [];
-      answersInSessionRef.current = 0;
-      answersSinceContrastRef.current = 0;
-      safeRemoveItem('genero_score');
-      safeRemoveItem('genero_streak');
-      safeRemoveItem('genero_max_streak');
-      safeRemoveItem(SRS_STORAGE_KEY);
-      safeRemoveItem(ERRORS_STORAGE_KEY);
+      engine.resetProgress();
     }
   };
 
-  // Change difficulty
   const handleDifficultyChange = (diff: Difficulty) => {
-    setDifficulty(diff);
-    safeSetItem('genero_difficulty', diff);
-    setGameState('playing');
-    setUserAnswer(null);
     setXOffset(0);
-    // El pool cambió: la tanda armada para el anterior ya no aplica, y el cierre se
-    // recalcula sobre el pool nuevo (el opt-out no se arrastra entre niveles).
-    contrastQueueRef.current = [];
-    setKeepPracticing(false);
+    engine.changeDifficulty(diff);
   };
 
   // --- KEYBOARD LISTENER ---
