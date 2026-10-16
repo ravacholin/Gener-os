@@ -46,6 +46,9 @@ body {
   --animate-fade-in: fade-in 0.1s linear;
   --animate-stamp: stamp 0.12s cubic-bezier(0.2, 0, 0, 1) both;
   --animate-rise: rise 0.12s cubic-bezier(0.2, 0, 0, 1) both;
+  /* Pista de gesto: la flecha se asoma hacia afuera, lenta y con pausa larga. */
+  --animate-nudge-left: nudge-left 2.4s ease-in-out infinite;
+  --animate-nudge-right: nudge-right 2.4s ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -61,6 +64,16 @@ body {
 @keyframes rise {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nudge-left {
+  0%, 60%, 100% { transform: translateX(0); }
+  75% { transform: translateX(-3px); }
+}
+
+@keyframes nudge-right {
+  0%, 60%, 100% { transform: translateX(0); }
+  75% { transform: translateX(3px); }
 }
 
 /* Monochrome gender textures — no color, hairline stripe vs dot grid */

@@ -427,6 +427,21 @@ export default function App() {
                 {activeNoun.difficulty !== difficulty && ' · repaso'}
               </span>
 
+              {/* Pistas de gesto: discretas en reposo, se encienden hacia el lado al que
+                  se arrastra. Solo mientras se juega; al responder, la tarjeta habla sola. */}
+              {gameState === 'playing' && (
+                <div aria-hidden="true" className="absolute inset-x-3 bottom-2.5 flex justify-between pointer-events-none text-[9px] font-mono font-bold uppercase tracking-widest">
+                  <span className={`inline-flex items-center gap-1 transition-colors duration-75 ${xOffset < -20 ? 'text-ink' : 'text-ink-dim/70'}`}>
+                    <span className="motion-safe:animate-nudge-left">←</span>
+                    <Mars className="w-3 h-3" /> masc
+                  </span>
+                  <span className={`inline-flex items-center gap-1 transition-colors duration-75 ${xOffset > 20 ? 'text-ink' : 'text-ink-dim/70'}`}>
+                    fem <Venus className="w-3 h-3" />
+                    <span className="motion-safe:animate-nudge-right">→</span>
+                  </span>
+                </div>
+              )}
+
               {/* CARD GAMEPLAY STATE DISPLAY */}
               <div className="text-center w-full flex flex-col items-center justify-center">
                 <h2 id="active-word-display" className={`${wordSizeClass(activeNoun.word.length)} font-black uppercase tracking-tighter text-ink select-none leading-none`}>
